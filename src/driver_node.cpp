@@ -20,6 +20,7 @@ public:
   {
     // ---- ROS2 publishers ----
     rclcpp::QoS qos(rclcpp::KeepLast(1));
+    rclcpp::QoS qos(rclcpp::KeepLast(10));
     qos.best_effort();
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("events", qos);
