@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.14)
 project(dv_processing_driver LANGUAGES CXX)
 
 # Compiler settings
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+# if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+#   add_compile_options(-Wall -Wextra -Wpedantic)
+# endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -27,6 +27,7 @@ add_executable(dv_processing_driver_node
 
 # Include directories
 target_include_directories(dv_processing_driver_node
+  SYSTEM
   PRIVATE
     ${OpenCV_INCLUDE_DIRS}
 )

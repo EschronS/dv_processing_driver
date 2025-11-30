@@ -7,7 +7,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <thread>
-#include <vector>
+
+#define OFFLINE_TESTING
 
 using namespace std::chrono_literals;
 constexpr auto SLICE_PERIOD = 5ms;
@@ -18,15 +19,14 @@ class EventCameraNode : public rclcpp::Node
 public:
   EventCameraNode() : Node("event_camera_node")
   {
-    // ---- ROS2 publishers ----
-    rclcpp::QoS qos(rclcpp::KeepLast(1));
+    // publishers
     rclcpp::QoS qos(rclcpp::KeepLast(10));
     qos.best_effort();
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("events", qos);
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("imu", qos);
 
-    // ---- Slicers ----
+    // slicers
     event_slicer_.doEveryTimeInterval(
       SLICE_PERIOD, [&](const dv::EventStore & store) { publishEvents(store); });
 
@@ -40,7 +40,7 @@ public:
   }
 
 private:
-  // ---------- Event publishing ----------
+  // publisher implimentations
   void publishEvents(const dv::EventStore & store)
   {
     if (store.isEmpty()) {
@@ -63,7 +63,6 @@ private:
     event_pub_->publish(std::move(msg));
   }
 
-  // ---------- IMU publishing ----------
   void publishImu(const dv::IMUPacket & packet)
   {
     std::vector<dv::IMU> imu_vec = packet.elements;
@@ -81,7 +80,7 @@ private:
     }
   }
 
-  // ---------- Real camera ----------
+  // real camera case
   void startCamera()
   {
     camera_.emplace();
@@ -99,7 +98,7 @@ private:
     thread_.detach();
   }
 
-  // ---------- Simulation ----------
+  // offline signal simulation for testing
   void startSimulation()
   {
     thread_ = std::thread([&]() {
@@ -117,7 +116,6 @@ private:
     thread_.detach();
   }
 
-  // ---------- Members ----------
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
 
