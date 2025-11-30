@@ -7,7 +7,7 @@
 #include "dv-processing/data/imu_base.hpp"
 #include "dv-processing/io/camera/dvxplorer_m.hpp"
 
-// #define OFFLINE_TESTING
+#define OFFLINE_TESTING
 
 using namespace std::chrono_literals;
 constexpr size_t MAX_EVENTS = 25000;
@@ -21,7 +21,7 @@ int main()
 
   dv::EventStreamSlicer event_slicer;
   dv::IMUStreamSlicer imu_slicer;
-  dv::EventStore buffer;
+  // dv::EventStore buffer;
 
   event_slicer.doEveryTimeInterval(SLICE_PERIOD, [](const dv::EventStore & events) {
     std::cout << "* Received events time-based slicing: " << events << std::endl;
