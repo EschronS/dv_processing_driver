@@ -1,0 +1,3 @@
+[submodule "thirdparty/dv-processing"]
+	path = thirdparty/dv-processing
+	url = https://gitlab.com/inivation/dv/dv-processing.git
