@@ -64,15 +64,15 @@ private:
   // ---------- IMU publishing ----------
   void publishImu(const dv::IMUPacket & packet)
   {
-    for (const auto & measure : packet) {
+    for (const auto & measure : packet.elements) {
       sensor_msgs::msg::Imu msg;
-      msg.header.stamp = rclcpp::Time(measure.timestamp());
-      msg.angular_velocity.x = measure.gyroscope().x();
-      msg.angular_velocity.y = measure.gyroscope().y();
-      msg.angular_velocity.z = measure.gyroscope().z();
-      msg.linear_acceleration.x = measure.acceleration().x();
-      msg.linear_acceleration.y = measure.acceleration().y();
-      msg.linear_acceleration.z = measure.acceleration().z();
+      msg.header.stamp = rclcpp::Time(measure.timestamp);
+      msg.angular_velocity.x = measure.gyroscopeX;
+      msg.angular_velocity.y = measure.gyroscopeY;
+      msg.angular_velocity.z = measure.gyroscopeZ;
+      msg.linear_acceleration.x = measure.accelerometerX;
+      msg.linear_acceleration.y = measure.accelerometerY;
+      msg.linear_acceleration.z = measure.accelerometerZ;
 
       imu_pub_->publish(msg);
     }
