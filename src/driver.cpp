@@ -5,8 +5,9 @@
 #include <thread>
 
 #include "dv-processing/data/imu_base.hpp"
+#include "dv-processing/io/camera/dvxplorer_m.hpp"
 
-#define OFFLINE_TESTING
+// #define OFFLINE_TESTING
 
 using namespace std::chrono_literals;
 constexpr size_t MAX_EVENTS = 25000;
@@ -31,8 +32,6 @@ int main()
     1, [](const dv::IMUPacket & imus) { std::cout << "* Received IMU: " << imus << std::endl; });
 
 #ifdef OFFLINE_TESTING
-  // Generate 1000 events within 2 second interval. These will be sliced
-  // correctly by the slicer.
   for (int i = 0; i < 1000; i++) {
     const auto imu_store = dv::data::generate::levelImuWithNoise(i * 1'000);
     const auto event_store =
@@ -44,6 +43,19 @@ int main()
 
 #endif
 #ifndef OFFLINE_TESTING
+  auto camera = dv::io::camera::DVXplorerM();
+
+  while (camera.isRunning()) {
+    // Handle events
+    if (const auto events = camera.getNextEventBatch(); events.has_value()) {
+      event_slicer.accept(*events);
+    }
+
+    // Handle frames
+    if (const auto imus = camera.getNextImuBatch(); imus.has_value()) {
+      imu_slicer.accept(*imus);
+    }
+  }
 
 #endif
 
