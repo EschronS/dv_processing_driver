@@ -7,6 +7,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 constexpr auto SLICE_PERIOD = 5ms;
@@ -64,7 +65,8 @@ private:
   // ---------- IMU publishing ----------
   void publishImu(const dv::IMUPacket & packet)
   {
-    for (const auto & measure : packet.elements) {
+    std::vector<dv::IMU> imu_vec = packet.elements;
+    for (const auto & measure : imu_vec) {
       sensor_msgs::msg::Imu msg;
       msg.header.stamp = rclcpp::Time(measure.timestamp);
       msg.angular_velocity.x = measure.gyroscopeX;
