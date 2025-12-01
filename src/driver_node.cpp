@@ -111,9 +111,9 @@ private:
   {
     thread_ = std::thread([&]() {
       for (int i = 0; i < 2000; i++) {
-        auto imus = dv::data::generate::levelImuWithNoise(i * 1000);
-        auto events =
-          dv::data::generate::uniformEventsWithinTimeRange(i * 1000, 1ms, cv::Size(640, 480), 1000);
+        auto imus = dv::data::generate::levelImuWithNoise(i * 1000, 0.1f, 0.01f, i);
+        auto events = dv::data::generate::uniformEventsWithinTimeRange(
+          i * 1000, 1ms, cv::Size(640, 480), 1000, i);
 
         imu_slicer_.accept(imus);
         event_slicer_.accept(events);
