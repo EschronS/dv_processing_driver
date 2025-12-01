@@ -1,4 +1,3 @@
-#include <chrono>
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
@@ -12,7 +11,7 @@
 
 using namespace std::chrono_literals;
 constexpr auto SLICE_PERIOD = 5ms;
-constexpr size_t MAX_EVENTS = 25000;
+constexpr size_t MAX_EVENTS = 50000;
 
 class EventCameraNode : public rclcpp::Node
 {
@@ -23,12 +22,14 @@ public:
     rclcpp::QoS qos(rclcpp::KeepLast(10));
     qos.best_effort();
 
-    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("events", qos);
-    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("imu", qos);
+    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
+    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos);
 
     // slicers
-    event_slicer_.doEveryTimeInterval(
-      SLICE_PERIOD, [&](const dv::EventStore & store) { publishEvents(store); });
+    event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
+      RCLCPP_WARN(get_logger(), "Received very many events %d > %d", store.size(), SLICE_PERIOD);
+      publishEvents(store);
+    });
 
     imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
 
