@@ -65,16 +65,21 @@ private:
 
   void publishImu(const dv::IMUPacket & packet)
   {
+    constexpr double G = 9.81;
+    constexpr double DEG_TO_RADIANS = M_PI / 180.0;
+
     std::vector<dv::IMU> imu_vec = packet.elements;
     for (const auto & measure : imu_vec) {
       sensor_msgs::msg::Imu msg;
-      msg.header.stamp = rclcpp::Time(measure.timestamp);
-      msg.angular_velocity.x = measure.gyroscopeX;
-      msg.angular_velocity.y = measure.gyroscopeY;
-      msg.angular_velocity.z = measure.gyroscopeZ;
-      msg.linear_acceleration.x = measure.accelerometerX;
-      msg.linear_acceleration.y = measure.accelerometerY;
-      msg.linear_acceleration.z = measure.accelerometerZ;
+      msg.header.stamp = rclcpp::Time(measure.timestamp * 1000);
+      msg.header.frame_id = "imu";
+      msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
+      msg.angular_velocity.y = measure.gyroscopeY * DEG_TO_RADIANS;
+      msg.angular_velocity.z = measure.gyroscopeZ * DEG_TO_RADIANS;
+      msg.linear_acceleration.x = measure.accelerometerX * G;
+      msg.linear_acceleration.y = measure.accelerometerY * G;
+      msg.linear_acceleration.z = measure.accelerometerZ * G;
+      msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
 
       imu_pub_->publish(msg);
     }
