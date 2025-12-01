@@ -19,6 +19,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(dvs_msgs REQUIRED)  # EventArray message
 find_package(OpenCV REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # Executable definition
 add_executable(dv_processing_driver_node
@@ -36,6 +37,7 @@ target_include_directories(dv_processing_driver_node
 target_link_libraries(dv_processing_driver_node
   dv::processing
   ${OpenCV_LIBS}
+  ${ZLIB_LIBRARIES}
 )
 
 # Ament dependencies (proper ROS include dirs & linking)

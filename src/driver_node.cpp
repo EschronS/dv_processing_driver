@@ -1,10 +1,15 @@
+#include <zlib.h>
+
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
 #include <dvs_msgs/msg/event.hpp>
 #include <dvs_msgs/msg/event_array.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rclcpp/serialized_message.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <thread>
 
 // #define OFFLINE_TESTING
@@ -24,6 +29,7 @@ public:
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos);
+    compressed_event_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos);
 
     // slicers
     event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
@@ -66,6 +72,21 @@ private:
       ev.ts = rclcpp::Time(e.timestamp());
       msg.events.push_back(ev);
     }
+
+    // rclcpp::SerializedMessage serialized_msg;
+    // rclcpp::Serialization<dvs_msgs::msg::EventArray> serializer;
+    // serializer.serialize_message(&msg, &serialized_msg);
+    //
+    // const uint8_t * raw_data = serialized_msg.get_rcl_serialized_message().buffer;
+    // size_t raw_size = serialized_msg.get_rcl_serialized_message().buffer_length;
+    //
+    // auto compressed = compressBuffer(raw_data, raw_size);
+    //
+    // if (!compressed.empty()) {
+    //   std_msgs::msg::UInt8MultiArray compressed_msg;
+    //   compressed_msg.data = std::move(compressed);
+    //   compressed_event_pub_->publish(compressed_msg);
+    // }
 
     event_pub_->publish(std::move(msg));
   }
@@ -128,12 +149,27 @@ private:
     thread_.detach();
   }
 
+  std::vector<uint8_t> compressBuffer(const uint8_t * data, size_t size)
+  {
+    uLongf compressedSize = compressBound(size);
+    std::vector<uint8_t> output(compressedSize);
+
+    if (compress2(output.data(), &compressedSize, data, size, Z_BEST_SPEED) != Z_OK) {
+      RCLCPP_ERROR(this->get_logger(), "Compression failed!");
+      return {};
+    }
+
+    output.resize(compressedSize);
+    return output;
+  }
+
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
 
   std::optional<dv::io::camera::DVXplorerM> camera_;
   rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
 
   std::thread thread_;
 };
