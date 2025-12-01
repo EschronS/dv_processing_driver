@@ -49,7 +49,10 @@ private:
 
     dvs_msgs::msg::EventArray msg;
     msg.header.stamp = now();
+    msg.header.frame_id = "events";
     msg.events.reserve(store.size());
+    msg.height = 480;
+    msg.width = 640;
 
     for (const auto & e : store) {
       dvs_msgs::msg::Event ev;
