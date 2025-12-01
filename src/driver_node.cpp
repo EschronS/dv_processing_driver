@@ -7,7 +7,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <thread>
 
-#define OFFLINE_TESTING
+// #define OFFLINE_TESTING
 
 using namespace std::chrono_literals;
 constexpr auto SLICE_PERIOD = 5ms;
@@ -27,7 +27,10 @@ public:
 
     // slicers
     event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
-      RCLCPP_WARN(get_logger(), "Received very many events %d > %d", store.size(), SLICE_PERIOD);
+      if (store.size() > MAX_EVENTS) {
+        RCLCPP_WARN(
+          get_logger(), "Received very many events %d > %d", int(store.size()), int(MAX_EVENTS));
+      }
       publishEvents(store);
     });
 
