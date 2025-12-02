@@ -3,8 +3,12 @@
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
+#include <dv-processing/noise/frequency_filters.hpp>
 #include <dvs_msgs/msg/event.hpp>
 #include <dvs_msgs/msg/event_array.hpp>
+#include <memory>
+#include <mutex>
+#include <opencv2/highgui.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
@@ -12,7 +16,12 @@
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <thread>
 
+#include "dv-processing/core/frame/accumulator.hpp"
+
 // #define OFFLINE_TESTING
+
+// IMPORTANT FOR VISUALIZATION
+// run `export QT_QPA_PLATFORM=xcb` before before starting the node
 
 using namespace std::chrono_literals;
 constexpr auto SLICE_PERIOD = 5ms;
@@ -46,7 +55,49 @@ public:
     startSimulation();
 #else
     startCamera();
+
+    // Initialize an accumulator with some resolution
+    accumulator_ = dv::Accumulator(*camera_->getEventResolution());
+    // show raw events
+    accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
+    accumulator_.setMinPotential(0.f);
+    accumulator_.setMaxPotential(1.f);
+
+    // ini filter
+    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
+      *camera_->getEventResolution(), 500.0f);
+
+    // fancy decay image reconstruct
+    // accumulator_.setMinPotential(0.f);
+    // accumulator_.setMaxPotential(1.f);
+    // accumulator_.setNeutralPotential(0.5f);
+    // accumulator_.setEventContribution(0.15f);
+    // accumulator_.setDecayFunction(dv::Accumulator::Decay::EXPONENTIAL);
+    // accumulator_.setDecayParam(1e+6);
+    // accumulator_.setIgnorePolarity(false);
+    // accumulator_.setSynchronousDecay(false);
+
+    // slicer for vis. frames
+    event_slicer_.doEveryTimeInterval(33ms, [&](const dv::EventStore & events) {
+      lp_filter_->accept(events);
+      const dv::EventStore filtered = lp_filter_->generateEvents();
+      accumulator_.accept(filtered);
+      dv::Frame frame = accumulator_.generateFrame();
+
+      {
+        std::lock_guard<std::mutex> lk(frame_mutex_);
+        latest_frame_ = frame;
+      }
+    });
 #endif
+  }
+
+  bool getLatestFrame(dv::Frame & out)
+  {
+    std::lock_guard<std::mutex> lk(frame_mutex_);
+    if (!latest_frame_) return false;
+    out = *latest_frame_;
+    return true;
   }
 
 private:
@@ -165,6 +216,12 @@ private:
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
+  std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
+
+  dv::Accumulator accumulator_;
+  dv::Frame event_frame_;
+  std::mutex frame_mutex_;
+  std::optional<dv::Frame> latest_frame_;
 
   std::optional<dv::io::camera::DVXplorerM> camera_;
   rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
@@ -177,7 +234,23 @@ private:
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<EventCameraNode>());
+
+  auto node = std::make_shared<EventCameraNode>();
+
+  // rosnode in an seperate thread, so vis. is main thread
+  std::thread ros_spin([node]() { rclcpp::spin(node); });
+
+  cv::namedWindow("Preview", cv::WINDOW_NORMAL);
+  while (rclcpp::ok()) {
+    dv::Frame frame;
+    if (node->getLatestFrame(frame)) {
+      cv::imshow("Preview", frame.image);
+      cv::waitKey(2);
+    }
+    std::this_thread::sleep_for(33ms);
+  }
+
+  ros_spin.join();
   rclcpp::shutdown();
   return 0;
 }
