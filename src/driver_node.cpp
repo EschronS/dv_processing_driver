@@ -109,7 +109,7 @@ private:
     }
 
     dvs_msgs::msg::EventArray msg;
-    msg.header.stamp = rclcpp::Time(store[0].timestamp());
+    msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000);
     msg.header.frame_id = "events";
     msg.events.reserve(store.size());
     msg.height = 480;
