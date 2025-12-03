@@ -120,7 +120,7 @@ private:
       ev.x = e.x();
       ev.y = e.y();
       ev.polarity = e.polarity();
-      ev.ts = rclcpp::Time(e.timestamp());
+      ev.ts = rclcpp::Time(e.timestamp() * 1000);
       msg.events.push_back(ev);
     }
 
