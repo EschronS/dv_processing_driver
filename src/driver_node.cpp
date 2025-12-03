@@ -148,9 +148,11 @@ private:
     constexpr double DEG_TO_RADIANS = M_PI / 180.0;
 
     std::vector<dv::IMU> imu_vec = packet.elements;
+    int64_t last_timestamp = 0;
     for (const auto & measure : imu_vec) {
       sensor_msgs::msg::Imu msg;
-      msg.header.stamp = rclcpp::Time(measure.timestamp * 1000);
+      int64_t msg_ts = measure.timestamp * 1000ULL;
+      msg.header.stamp = rclcpp::Time(msg_ts);
       msg.header.frame_id = "imu";
       msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
       msg.angular_velocity.y = measure.gyroscopeY * DEG_TO_RADIANS;
@@ -160,7 +162,10 @@ private:
       msg.linear_acceleration.z = measure.accelerometerZ * G;
       msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
 
-      imu_pub_->publish(msg);
+      if (msg_ts > last_timestamp) {
+        imu_pub_->publish(msg);
+        last_timestamp = msg_ts;
+      }
     }
   }
 
