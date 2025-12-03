@@ -151,7 +151,8 @@ private:
     int64_t last_timestamp = 0;
     for (const auto & measure : imu_vec) {
       sensor_msgs::msg::Imu msg;
-      int64_t msg_ts = measure.timestamp * 1000ULL;
+      // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
+      int64_t msg_ts = static_cast<uint64_t>(measure.timestamp) * 1000ULL;
       msg.header.stamp = rclcpp::Time(msg_ts);
       msg.header.frame_id = "imu";
       msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
