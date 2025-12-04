@@ -38,6 +38,7 @@ public:
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos);
+    int64_t last_timestamp = 0;
     compressed_event_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos);
 
     // slicers
@@ -109,7 +110,7 @@ private:
     }
 
     dvs_msgs::msg::EventArray msg;
-    msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000);
+    msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
     msg.header.frame_id = "events";
     msg.events.reserve(store.size());
     msg.height = 480;
@@ -120,7 +121,7 @@ private:
       ev.x = e.x();
       ev.y = e.y();
       ev.polarity = e.polarity();
-      ev.ts = rclcpp::Time(e.timestamp() * 1000);
+      ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
       msg.events.push_back(ev);
     }
 
@@ -148,11 +149,10 @@ private:
     constexpr double DEG_TO_RADIANS = M_PI / 180.0;
 
     std::vector<dv::IMU> imu_vec = packet.elements;
-    int64_t last_timestamp = 0;
     for (const auto & measure : imu_vec) {
       sensor_msgs::msg::Imu msg;
       // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
-      int64_t msg_ts = static_cast<uint64_t>(measure.timestamp) * 1000ULL;
+      int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
       msg.header.stamp = rclcpp::Time(msg_ts);
       msg.header.frame_id = "imu";
       msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
@@ -163,6 +163,8 @@ private:
       msg.linear_acceleration.z = measure.accelerometerZ * G;
       msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
 
+      // different slicer callback have data with identical ts
+      // drop those
       if (msg_ts > last_timestamp) {
         imu_pub_->publish(msg);
         last_timestamp = msg_ts;
@@ -232,6 +234,7 @@ private:
   std::optional<dv::io::camera::DVXplorerM> camera_;
   rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  int64_t last_timestamp;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
 
   std::thread thread_;
