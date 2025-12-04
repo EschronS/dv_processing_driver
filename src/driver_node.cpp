@@ -63,10 +63,11 @@ public:
     accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
     accumulator_.setMinPotential(0.f);
     accumulator_.setMaxPotential(1.f);
+    accumulator_.setEventContribution(1.f);
 
     // ini filter
     lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
-      *camera_->getEventResolution(), 500.0f);
+      *camera_->getEventResolution(), 30.0f);
 
     // fancy decay image reconstruct
     // accumulator_.setMinPotential(0.f);
@@ -79,7 +80,7 @@ public:
     // accumulator_.setSynchronousDecay(false);
 
     // slicer for vis. frames
-    event_slicer_.doEveryTimeInterval(33ms, [&](const dv::EventStore & events) {
+    event_slicer_.doEveryTimeInterval(66ms, [&](const dv::EventStore & events) {
       lp_filter_->accept(events);
       const dv::EventStore filtered = lp_filter_->generateEvents();
       accumulator_.accept(filtered);
