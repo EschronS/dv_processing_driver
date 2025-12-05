@@ -61,6 +61,9 @@ public:
     startSimulation();
 #else
     startCamera();
+    // ini filter
+    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
+      *camera_->getEventResolution(), 50.0f);
 #ifdef LIVE_VISUALIZATION
     // Initialize an accumulator with some resolution
     accumulator_ = dv::Accumulator(*camera_->getEventResolution());
@@ -69,10 +72,6 @@ public:
     accumulator_.setMinPotential(0.f);
     accumulator_.setMaxPotential(1.f);
     accumulator_.setEventContribution(1.5f);
-
-    // ini filter
-    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
-      *camera_->getEventResolution(), 30.0f);
 
     // fancy decay image reconstruct
     // accumulator_.setMinPotential(0.f);
@@ -187,7 +186,10 @@ private:
     thread_ = std::thread([&]() {
       while (rclcpp::ok() && camera_->isRunning()) {
         if (auto events = camera_->getNextEventBatch(); events.has_value()) {
-          event_slicer_.accept(*events);
+          lp_filter_->accept(*events);
+          const dv::EventStore filtered = lp_filter_->generateEvents();
+          accumulator_.accept(filtered);
+          event_slicer_.accept(filtered);
         }
         if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
           imu_slicer_.accept(*imus);
