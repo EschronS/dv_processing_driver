@@ -56,6 +56,9 @@ public:
 #ifdef OFFLINE_TESTING
     startSimulation();
 #else
+    // ini filter
+    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
+      *camera_->getEventResolution(), 100.0f);
     startCamera();
 #ifdef LIVE_VISUALIZATION
     // Initialize an accumulator with some resolution
@@ -65,10 +68,6 @@ public:
     accumulator_.setMinPotential(0.f);
     accumulator_.setMaxPotential(1.f);
     accumulator_.setEventContribution(1.5f);
-
-    // ini filter
-    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
-      *camera_->getEventResolution(), 30.0f);
 
     // fancy decay image reconstruct
     // accumulator_.setMinPotential(0.f);
@@ -183,7 +182,9 @@ private:
     thread_ = std::thread([&]() {
       while (rclcpp::ok() && camera_->isRunning()) {
         if (auto events = camera_->getNextEventBatch(); events.has_value()) {
-          event_slicer_.accept(*events);
+          lp_filter_->accept(*events);
+          // const dv::EventStore filtered = lp_filter_->generateEvents();
+          event_slicer_.accept(lp_filter_->generateEvents());
         }
         if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
           imu_slicer_.accept(*imus);
@@ -239,6 +240,8 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   int64_t last_timestamp;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
+
+  uint64_t event_slicer_callback_counter_;
 
   std::thread thread_;
 };
