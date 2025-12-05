@@ -34,13 +34,17 @@ public:
   EventCameraNode() : Node("event_camera_node")
   {
     // publishers
-    rclcpp::QoS qos(rclcpp::KeepLast(1));
-    qos.best_effort();
+    rclcpp::QoS qos_event(rclcpp::KeepLast(1));
+    qos_event.best_effort();  // for imu not us best effort
+    rclcpp::QoS qos_imu(rclcpp::KeepLast(10));
+    qos_imu.reliable();  // for imu not us best effort
 
-    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
-    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos);
+    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
+    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
     int64_t last_timestamp = 0;
-    compressed_event_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos);
+
+    compressed_event_pub_ =
+      create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
 
     // slicers
     event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
@@ -48,7 +52,7 @@ public:
         RCLCPP_WARN(
           get_logger(), "Received very many events %d > %d", int(store.size()), int(MAX_EVENTS));
       }
-      publishEvents(store);
+      publishEvents(store);  // check real runtime of callback
     });
 
     imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
