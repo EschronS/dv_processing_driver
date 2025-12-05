@@ -19,6 +19,7 @@
 #include "dv-processing/core/frame/accumulator.hpp"
 
 // #define OFFLINE_TESTING
+// #define LIVE_VISUALIZATION
 
 // IMPORTANT FOR VISUALIZATION
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
@@ -56,7 +57,7 @@ public:
     startSimulation();
 #else
     startCamera();
-
+#ifdef LIVE_VISUALIZATION
     // Initialize an accumulator with some resolution
     accumulator_ = dv::Accumulator(*camera_->getEventResolution());
     // show raw events
@@ -91,6 +92,7 @@ public:
         latest_frame_ = frame;
       }
     });
+#endif
 #endif
   }
 
@@ -250,6 +252,7 @@ int main(int argc, char ** argv)
   // rosnode in an seperate thread, so vis. is main thread
   std::thread ros_spin([node]() { rclcpp::spin(node); });
 
+#ifdef LIVE_VISUALIZATION
   cv::namedWindow("Preview", cv::WINDOW_NORMAL);
   while (rclcpp::ok()) {
     dv::Frame frame;
@@ -259,7 +262,7 @@ int main(int argc, char ** argv)
     }
     std::this_thread::sleep_for(33ms);
   }
-
+#endif
   ros_spin.join();
   rclcpp::shutdown();
   return 0;
