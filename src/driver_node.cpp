@@ -33,7 +33,7 @@ public:
   EventCameraNode() : Node("event_camera_node")
   {
     // publishers
-    rclcpp::QoS qos(rclcpp::KeepLast(10));
+    rclcpp::QoS qos(rclcpp::KeepLast(1));
     qos.best_effort();
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
@@ -63,7 +63,7 @@ public:
     accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
     accumulator_.setMinPotential(0.f);
     accumulator_.setMaxPotential(1.f);
-    accumulator_.setEventContribution(1.f);
+    accumulator_.setEventContribution(1.5f);
 
     // ini filter
     lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
