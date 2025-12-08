@@ -41,7 +41,7 @@ public:
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
-    int64_t last_timestamp = 0;
+    last_timestamp = 0;
 
     compressed_event_pub_ =
       create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
