@@ -1,6 +1,7 @@
 #include <zlib.h>
 
 #include <dv-processing/core/core.hpp>
+#include <dv-processing/core/frame/accumulator.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
 #include <dv-processing/noise/frequency_filters.hpp>
@@ -9,14 +10,13 @@
 #include <memory>
 #include <mutex>
 #include <opencv2/highgui.hpp>
+#include <rclcpp/qos.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <thread>
-
-#include "dv-processing/core/frame/accumulator.hpp"
 
 // #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
@@ -36,8 +36,8 @@ public:
     // publishers
     rclcpp::QoS qos_event(rclcpp::KeepLast(1));
     qos_event.best_effort();  // for imu not us best effort
-    rclcpp::QoS qos_imu(rclcpp::KeepLast(10));
-    qos_imu.reliable();  // for imu not us best effort
+    rclcpp::QoS qos_imu{rclcpp::KeepAll()};
+    qos_imu.reliable();
 
     event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
