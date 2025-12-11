@@ -1,6 +1,7 @@
 #include <zlib.h>
 
 #include <dv-processing/core/core.hpp>
+#include <dv-processing/core/frame/accumulator.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
 #include <dv-processing/noise/frequency_filters.hpp>
@@ -9,14 +10,13 @@
 #include <memory>
 #include <mutex>
 #include <opencv2/highgui.hpp>
+#include <rclcpp/qos.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <thread>
-
-#include "dv-processing/core/frame/accumulator.hpp"
 
 // #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
@@ -34,13 +34,17 @@ public:
   EventCameraNode() : Node("event_camera_node")
   {
     // publishers
-    rclcpp::QoS qos(rclcpp::KeepLast(1));
-    qos.best_effort();
+    rclcpp::QoS qos_event(rclcpp::KeepLast(1));
+    qos_event.best_effort();  // for imu not us best effort
+    rclcpp::QoS qos_imu{rclcpp::KeepAll()};
+    qos_imu.reliable();
 
-    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos);
-    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos);
-    int64_t last_timestamp = 0;
-    compressed_event_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos);
+    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
+    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
+    last_timestamp = 0;
+
+    compressed_event_pub_ =
+      create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
 
     // slicers
     event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
@@ -48,7 +52,7 @@ public:
         RCLCPP_WARN(
           get_logger(), "Received very many events %d > %d", int(store.size()), int(MAX_EVENTS));
       }
-      publishEvents(store);
+      publishEvents(store);  // check real runtime of callback
     });
 
     imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
@@ -60,6 +64,9 @@ public:
     lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
       *camera_->getEventResolution(), 100.0f);
     startCamera();
+    // ini filter
+    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
+      *camera_->getEventResolution(), 50.0f);
 #ifdef LIVE_VISUALIZATION
     // Initialize an accumulator with some resolution
     accumulator_ = dv::Accumulator(*camera_->getEventResolution());
@@ -183,8 +190,9 @@ private:
       while (rclcpp::ok() && camera_->isRunning()) {
         if (auto events = camera_->getNextEventBatch(); events.has_value()) {
           lp_filter_->accept(*events);
-          // const dv::EventStore filtered = lp_filter_->generateEvents();
-          event_slicer_.accept(lp_filter_->generateEvents());
+          const dv::EventStore filtered = lp_filter_->generateEvents();
+          accumulator_.accept(filtered);
+          event_slicer_.accept(filtered);
         }
         if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
           imu_slicer_.accept(*imus);
