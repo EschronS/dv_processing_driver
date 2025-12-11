@@ -124,8 +124,8 @@ private:
 
     for (const auto & e : store) {
       dvs_msgs::msg::Event ev;
-      ev.x = e.x();
-      ev.y = e.y();
+      ev.x = e.x() / dimension_divisor_;
+      ev.y = e.y() / dimension_divisor_;
       ev.polarity = e.polarity();
       ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
       msg.events.push_back(ev);
@@ -231,15 +231,28 @@ private:
     return output;
   }
 
-  void createMask(uint8_t divisor = 2, int rows = 480, int cols = 640)
+  void createMask(uint8_t every_nth_px = 2, int rows = 480, int cols = 640)
   {
-    cv::Mat base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
-    cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
+    cv::Mat base;
+    if (every_nth_px == 2) {
+      base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
+      dimension_divisor_ = 2;  // scale down the max cols and rows when publishing
+    } else if (every_nth_px == 4) {
+      base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 0);
+      dimension_divisor_ = 2;
+    }
+    if (every_nth_px != 1) {
+      cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
+    } else {
+      dimension_divisor_ = 1;
+    }
+    assert(dimension_divisor_ > 0);  // unknown every_nth_px value
   }
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
   std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
+  std::unique_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
 
   dv::Accumulator accumulator_;
   dv::Frame event_frame_;
@@ -256,6 +269,7 @@ private:
 
   // mask filtering
   cv::Mat mask_;
+  int dimension_divisor_ = -1;
 
   // uint64_t event_slicer_callback_counter_;
 };
