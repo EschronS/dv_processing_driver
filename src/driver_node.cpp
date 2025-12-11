@@ -62,10 +62,6 @@ public:
 #else
     // ini filter
     lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
-      *camera_->getEventResolution(), 100.0f);
-    startCamera();
-    // ini filter
-    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
       *camera_->getEventResolution(), 50.0f);
 #ifdef LIVE_VISUALIZATION
     // Initialize an accumulator with some resolution
@@ -159,9 +155,11 @@ private:
 
     std::vector<dv::IMU> imu_vec = packet.elements;
     for (const auto & measure : imu_vec) {
-      sensor_msgs::msg::Imu msg;
       // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
       int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
+      // slicer inludes identical measurements in multiple slices, drop those
+      if (msg_ts <= last_timestamp) continue;
+      sensor_msgs::msg::Imu msg;
       msg.header.stamp = rclcpp::Time(msg_ts);
       msg.header.frame_id = "imu";
       msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
@@ -172,12 +170,8 @@ private:
       msg.linear_acceleration.z = measure.accelerometerZ * G;
       msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
 
-      // different slicer callback have data with identical ts
-      // drop those
-      if (msg_ts > last_timestamp) {
-        imu_pub_->publish(msg);
-        last_timestamp = msg_ts;
-      }
+      last_timestamp = msg_ts;
+      imu_pub_->publish(msg);
     }
   }
 
