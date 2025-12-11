@@ -9,6 +9,7 @@
 #include <dvs_msgs/msg/event_array.hpp>
 #include <memory>
 #include <mutex>
+#include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <rclcpp/qos.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -230,6 +231,12 @@ private:
     return output;
   }
 
+  void createMask(uint8_t divisor = 2, int rows = 480, int cols = 640)
+  {
+    cv::Mat base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
+    cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
+  }
+
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
   std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
@@ -245,9 +252,12 @@ private:
   int64_t last_timestamp;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
 
-  // uint64_t event_slicer_callback_counter_;
-
   std::thread thread_;
+
+  // mask filtering
+  cv::Mat mask_;
+
+  // uint64_t event_slicer_callback_counter_;
 };
 
 int main(int argc, char ** argv)
