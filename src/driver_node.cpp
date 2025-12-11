@@ -191,7 +191,9 @@ private:
         if (auto events = camera_->getNextEventBatch(); events.has_value()) {
           lp_filter_->accept(*events);
           const dv::EventStore filtered = lp_filter_->generateEvents();
+#ifdef LIVE_VISUALIZATION
           accumulator_.accept(filtered);
+#endif
           event_slicer_.accept(filtered);
         }
         if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
@@ -249,7 +251,7 @@ private:
   int64_t last_timestamp;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
 
-  uint64_t event_slicer_callback_counter_;
+  // uint64_t event_slicer_callback_counter_;
 
   std::thread thread_;
 };
