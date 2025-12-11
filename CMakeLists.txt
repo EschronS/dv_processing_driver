@@ -40,6 +40,7 @@ add_executable(dv_processing_driver_node
 target_include_directories(dv_processing_driver_node
   SYSTEM
   PRIVATE
+    include
     ${OpenCV_INCLUDE_DIRS}
 )
 

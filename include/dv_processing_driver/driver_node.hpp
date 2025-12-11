@@ -1,0 +1,63 @@
+#pragma once
+#include <chrono>
+#include <dv-processing/core/core.hpp>
+#include <dv-processing/core/frame/accumulator.hpp>
+#include <dv-processing/data/generate.hpp>
+#include <dv-processing/io/camera/dvxplorer_m.hpp>
+#include <dv-processing/noise/frequency_filters.hpp>
+#include <dvs_msgs/msg/event.hpp>
+#include <dvs_msgs/msg/event_array.hpp>
+#include <memory>
+#include <mutex>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
+
+#include "dv-processing/core/filters.hpp"
+
+class EventCameraNode : public rclcpp::Node
+{
+public:
+  EventCameraNode();
+
+  bool getLatestFrame(dv::Frame & out);
+  void startCamera();
+  void startSimulation();
+
+private:
+  // Publishers
+  void publishEvents(const dv::EventStore & store);
+  void publishImu(const dv::IMUPacket & packet);
+
+  // Utilities
+  std::vector<uint8_t> compressBuffer(const uint8_t * data, size_t size);
+  void createMask(int every_nth_px = 2, cv::Size size = cv::Size(640, 480));
+  void process_events();  // placeholder if you have other internal processing
+
+  // Member variables
+  std::chrono::milliseconds slice_period_;
+  size_t max_events_;
+  int every_nth_px_;
+
+  dv::EventStreamSlicer event_slicer_;
+  dv::IMUStreamSlicer imu_slicer_;
+  std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
+  std::unique_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
+
+  dv::Accumulator accumulator_;
+  dv::Frame event_frame_;
+  std::mutex frame_mutex_;
+  std::optional<dv::Frame> latest_frame_;
+
+  std::optional<dv::io::camera::DVXplorerM> camera_;
+  rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  int64_t last_timestamp;
+  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
+
+  std::thread thread_;
+
+  // mask filtering
+  cv::Mat mask_;
+  int dimension_divisor_ = -1;
+};

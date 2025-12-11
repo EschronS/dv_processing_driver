@@ -1,22 +1,12 @@
+#include "dv_processing_driver/driver_node.hpp"
+
 #include <zlib.h>
 
-#include <dv-processing/core/core.hpp>
-#include <dv-processing/core/frame/accumulator.hpp>
-#include <dv-processing/data/generate.hpp>
-#include <dv-processing/io/camera/dvxplorer_m.hpp>
-#include <dv-processing/noise/frequency_filters.hpp>
-#include <dvs_msgs/msg/event.hpp>
-#include <dvs_msgs/msg/event_array.hpp>
-#include <memory>
-#include <mutex>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <rclcpp/qos.hpp>
-#include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
-#include <sensor_msgs/msg/imu.hpp>
-#include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <thread>
 
 // #define OFFLINE_TESTING
@@ -26,253 +16,234 @@
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
 
 using namespace std::chrono_literals;
-constexpr auto SLICE_PERIOD = 5ms;
-constexpr size_t MAX_EVENTS = 50000;
 
-class EventCameraNode : public rclcpp::Node
+EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 {
-public:
-  EventCameraNode() : Node("event_camera_node")
-  {
-    // publishers
-    rclcpp::QoS qos_event(rclcpp::KeepLast(1));
-    qos_event.best_effort();  // for imu not us best effort
-    rclcpp::QoS qos_imu{rclcpp::KeepAll()};
-    qos_imu.reliable();
+  //params
+  auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
+  slice_period_ = std::chrono::milliseconds(slice_ms);
+  max_events_ = this->declare_parameter<int>("max_events", 50000);
+  every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
 
-    event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
-    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
-    last_timestamp = 0;
+  // publishers
+  rclcpp::QoS qos_event(rclcpp::KeepLast(1));
+  qos_event.best_effort();  // for imu not us best effort
+  rclcpp::QoS qos_imu{rclcpp::KeepAll()};
+  qos_imu.reliable();
 
-    compressed_event_pub_ =
-      create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
+  event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
+  imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
+  last_timestamp = 0;
 
-    // slicers
-    event_slicer_.doEveryTimeInterval(SLICE_PERIOD, [&](const dv::EventStore & store) {
-      if (store.size() > MAX_EVENTS) {
-        RCLCPP_WARN(
-          get_logger(), "Received very many events %d > %d", int(store.size()), int(MAX_EVENTS));
-      }
-      publishEvents(store);  // check real runtime of callback
-    });
+  compressed_event_pub_ =
+    create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
 
-    imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
+  // slicers
+  event_slicer_.doEveryTimeInterval(slice_period_, [&](const dv::EventStore & store) {
+    if (store.size() > max_events_) {
+      RCLCPP_WARN(
+        get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
+    }
+    publishEvents(store);  // check real runtime of callback
+  });
+
+  imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
 
 #ifdef OFFLINE_TESTING
-    startSimulation();
+  startSimulation();
 #else
-    // ini filter
-    lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
-      *camera_->getEventResolution(), 50.0f);
+  // ini filters
+  lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore> >(
+    *camera_->getEventResolution(), 50.0f);
+  createMask(every_nth_px_, *camera_->getEventResolution());
+  em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore> >(mask_);
 #ifdef LIVE_VISUALIZATION
-    // Initialize an accumulator with some resolution
-    accumulator_ = dv::Accumulator(*camera_->getEventResolution());
-    // show raw events
-    accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
-    accumulator_.setMinPotential(0.f);
-    accumulator_.setMaxPotential(1.f);
-    accumulator_.setEventContribution(1.5f);
+  // Initialize an accumulator with some resolution
+  accumulator_ = dv::Accumulator(*camera_->getEventResolution());
+  // show raw events
+  accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
+  accumulator_.setMinPotential(0.f);
+  accumulator_.setMaxPotential(1.f);
+  accumulator_.setEventContribution(1.5f);
 
-    // fancy decay image reconstruct
-    // accumulator_.setMinPotential(0.f);
-    // accumulator_.setMaxPotential(1.f);
-    // accumulator_.setNeutralPotential(0.5f);
-    // accumulator_.setEventContribution(0.15f);
-    // accumulator_.setDecayFunction(dv::Accumulator::Decay::EXPONENTIAL);
-    // accumulator_.setDecayParam(1e+6);
-    // accumulator_.setIgnorePolarity(false);
-    // accumulator_.setSynchronousDecay(false);
+  // fancy decay image reconstruct
+  // accumulator_.setMinPotential(0.f);
+  // accumulator_.setMaxPotential(1.f);
+  // accumulator_.setNeutralPotential(0.5f);
+  // accumulator_.setEventContribution(0.15f);
+  // accumulator_.setDecayFunction(dv::Accumulator::Decay::EXPONENTIAL);
+  // accumulator_.setDecayParam(1e+6);
+  // accumulator_.setIgnorePolarity(false);
+  // accumulator_.setSynchronousDecay(false);
 
-    // slicer for vis. frames
-    event_slicer_.doEveryTimeInterval(66ms, [&](const dv::EventStore & events) {
-      lp_filter_->accept(events);
-      const dv::EventStore filtered = lp_filter_->generateEvents();
-      accumulator_.accept(filtered);
-      dv::Frame frame = accumulator_.generateFrame();
+  // slicer for vis. frames
+  event_slicer_.doEveryTimeInterval(66ms, [&](const dv::EventStore & events) {
+    lp_filter_->accept(events);
+    const dv::EventStore filtered = lp_filter_->generateEvents();
+    accumulator_.accept(filtered);
+    dv::Frame frame = accumulator_.generateFrame();
 
-      {
-        std::lock_guard<std::mutex> lk(frame_mutex_);
-        latest_frame_ = frame;
-      }
-    });
+    {
+      std::lock_guard<std::mutex> lk(frame_mutex_);
+      latest_frame_ = frame;
+    }
+  });
 #endif
 #endif
+}
+
+bool EventCameraNode::getLatestFrame(dv::Frame & out)
+{
+  std::lock_guard<std::mutex> lk(frame_mutex_);
+  if (!latest_frame_) return false;
+  out = *latest_frame_;
+  return true;
+}
+
+// publisher implimentations
+void EventCameraNode::publishEvents(const dv::EventStore & store)
+{
+  if (store.isEmpty()) {
+    return;
   }
 
-  bool getLatestFrame(dv::Frame & out)
-  {
-    std::lock_guard<std::mutex> lk(frame_mutex_);
-    if (!latest_frame_) return false;
-    out = *latest_frame_;
-    return true;
+  dvs_msgs::msg::EventArray msg;
+  msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
+  msg.header.frame_id = "events";
+  msg.events.reserve(store.size());
+  msg.height = 480 / dimension_divisor_;
+  msg.width = 640 / dimension_divisor_;
+
+  for (const auto & e : store) {
+    dvs_msgs::msg::Event ev;
+    ev.x = e.x() / dimension_divisor_;
+    ev.y = e.y() / dimension_divisor_;
+    ev.polarity = e.polarity();
+    ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
+    msg.events.push_back(ev);
   }
 
-private:
-  // publisher implimentations
-  void publishEvents(const dv::EventStore & store)
-  {
-    if (store.isEmpty()) {
-      return;
-    }
+  // rclcpp::SerializedMessage serialized_msg;
+  // rclcpp::Serialization<dvs_msgs::msg::EventArray> serializer;
+  // serializer.serialize_message(&msg, &serialized_msg);
+  //
+  // const uint8_t * raw_data = serialized_msg.get_rcl_serialized_message().buffer;
+  // size_t raw_size = serialized_msg.get_rcl_serialized_message().buffer_length;
+  //
+  // auto compressed = compressBuffer(raw_data, raw_size);
+  //
+  // if (!compressed.empty()) {
+  //   std_msgs::msg::UInt8MultiArray compressed_msg;
+  //   compressed_msg.data = std::move(compressed);
+  //   compressed_event_pub_->publish(compressed_msg);
+  // }
 
-    dvs_msgs::msg::EventArray msg;
-    msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
-    msg.header.frame_id = "events";
-    msg.events.reserve(store.size());
-    msg.height = 480;
-    msg.width = 640;
+  event_pub_->publish(std::move(msg));
+}
 
-    for (const auto & e : store) {
-      dvs_msgs::msg::Event ev;
-      ev.x = e.x() / dimension_divisor_;
-      ev.y = e.y() / dimension_divisor_;
-      ev.polarity = e.polarity();
-      ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
-      msg.events.push_back(ev);
-    }
+void EventCameraNode::publishImu(const dv::IMUPacket & packet)
+{
+  constexpr double G = 9.81;
+  constexpr double DEG_TO_RADIANS = M_PI / 180.0;
 
-    // rclcpp::SerializedMessage serialized_msg;
-    // rclcpp::Serialization<dvs_msgs::msg::EventArray> serializer;
-    // serializer.serialize_message(&msg, &serialized_msg);
-    //
-    // const uint8_t * raw_data = serialized_msg.get_rcl_serialized_message().buffer;
-    // size_t raw_size = serialized_msg.get_rcl_serialized_message().buffer_length;
-    //
-    // auto compressed = compressBuffer(raw_data, raw_size);
-    //
-    // if (!compressed.empty()) {
-    //   std_msgs::msg::UInt8MultiArray compressed_msg;
-    //   compressed_msg.data = std::move(compressed);
-    //   compressed_event_pub_->publish(compressed_msg);
-    // }
+  std::vector<dv::IMU> imu_vec = packet.elements;
+  for (const auto & measure : imu_vec) {
+    // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
+    int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
+    // slicer inludes identical measurements in multiple slices, drop those
+    if (msg_ts <= last_timestamp) continue;
+    sensor_msgs::msg::Imu msg;
+    msg.header.stamp = rclcpp::Time(msg_ts);
+    msg.header.frame_id = "imu";
+    msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
+    msg.angular_velocity.y = measure.gyroscopeY * DEG_TO_RADIANS;
+    msg.angular_velocity.z = measure.gyroscopeZ * DEG_TO_RADIANS;
+    msg.linear_acceleration.x = measure.accelerometerX * G;
+    msg.linear_acceleration.y = measure.accelerometerY * G;
+    msg.linear_acceleration.z = measure.accelerometerZ * G;
+    msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
 
-    event_pub_->publish(std::move(msg));
+    last_timestamp = msg_ts;
+    imu_pub_->publish(msg);
   }
+}
 
-  void publishImu(const dv::IMUPacket & packet)
-  {
-    constexpr double G = 9.81;
-    constexpr double DEG_TO_RADIANS = M_PI / 180.0;
+// real camera case
+void EventCameraNode::startCamera()
+{
+  camera_.emplace();
 
-    std::vector<dv::IMU> imu_vec = packet.elements;
-    for (const auto & measure : imu_vec) {
-      // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
-      int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
-      // slicer inludes identical measurements in multiple slices, drop those
-      if (msg_ts <= last_timestamp) continue;
-      sensor_msgs::msg::Imu msg;
-      msg.header.stamp = rclcpp::Time(msg_ts);
-      msg.header.frame_id = "imu";
-      msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
-      msg.angular_velocity.y = measure.gyroscopeY * DEG_TO_RADIANS;
-      msg.angular_velocity.z = measure.gyroscopeZ * DEG_TO_RADIANS;
-      msg.linear_acceleration.x = measure.accelerometerX * G;
-      msg.linear_acceleration.y = measure.accelerometerY * G;
-      msg.linear_acceleration.z = measure.accelerometerZ * G;
-      msg.orientation_covariance[0] = -1.0;  // see ROS REP 145
-
-      last_timestamp = msg_ts;
-      imu_pub_->publish(msg);
-    }
-  }
-
-  // real camera case
-  void startCamera()
-  {
-    camera_.emplace();
-
-    thread_ = std::thread([&]() {
-      while (rclcpp::ok() && camera_->isRunning()) {
-        if (auto events = camera_->getNextEventBatch(); events.has_value()) {
-          lp_filter_->accept(*events);
-          const dv::EventStore filtered = lp_filter_->generateEvents();
+  thread_ = std::thread([&]() {
+    while (rclcpp::ok() && camera_->isRunning()) {
+      if (auto events = camera_->getNextEventBatch(); events.has_value()) {
+        lp_filter_->accept(*events);
+        const dv::EventStore filtered = lp_filter_->generateEvents();
 #ifdef LIVE_VISUALIZATION
-          accumulator_.accept(filtered);
+        accumulator_.accept(filtered);
 #endif
-          event_slicer_.accept(filtered);
-        }
-        if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
-          imu_slicer_.accept(*imus);
-        }
+        event_slicer_.accept(filtered);
       }
-    });
-    thread_.detach();
-  }
-
-  // offline signal simulation for testing
-  void startSimulation()
-  {
-    thread_ = std::thread([&]() {
-      for (int i = 0; i < 2000; i++) {
-        auto imus = dv::data::generate::levelImuWithNoise(i * 1000, 0.1f, 0.01f, i);
-        auto events = dv::data::generate::uniformEventsWithinTimeRange(
-          i * 1000, 1ms, cv::Size(640, 480), 1000, i);
-
-        imu_slicer_.accept(imus);
-        event_slicer_.accept(events);
-
-        std::this_thread::sleep_for(1ms);
+      if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
+        imu_slicer_.accept(*imus);
       }
-    });
-    thread_.detach();
+    }
+  });
+  thread_.detach();
+}
+
+// offline signal simulation for testing
+void EventCameraNode::startSimulation()
+{
+  thread_ = std::thread([&]() {
+    for (int i = 0; i < 2000; i++) {
+      auto imus = dv::data::generate::levelImuWithNoise(i * 1000, 0.1f, 0.01f, i);
+      auto events = dv::data::generate::uniformEventsWithinTimeRange(
+        i * 1000, 1ms, cv::Size(640, 480), 1000, i);
+
+      imu_slicer_.accept(imus);
+      event_slicer_.accept(events);
+
+      std::this_thread::sleep_for(1ms);
+    }
+  });
+  thread_.detach();
+}
+
+std::vector<uint8_t> EventCameraNode::compressBuffer(const uint8_t * data, size_t size)
+{
+  uLongf compressedSize = compressBound(size);
+  std::vector<uint8_t> output(compressedSize);
+
+  if (compress2(output.data(), &compressedSize, data, size, Z_BEST_SPEED) != Z_OK) {
+    RCLCPP_ERROR(this->get_logger(), "Compression failed!");
+    return {};
   }
 
-  std::vector<uint8_t> compressBuffer(const uint8_t * data, size_t size)
-  {
-    uLongf compressedSize = compressBound(size);
-    std::vector<uint8_t> output(compressedSize);
+  output.resize(compressedSize);
+  return output;
+}
 
-    if (compress2(output.data(), &compressedSize, data, size, Z_BEST_SPEED) != Z_OK) {
-      RCLCPP_ERROR(this->get_logger(), "Compression failed!");
-      return {};
-    }
-
-    output.resize(compressedSize);
-    return output;
+void EventCameraNode::createMask(int every_nth_px, cv::Size size)
+{
+  int rows = size.height;
+  int cols = size.width;
+  cv::Mat base;
+  if (every_nth_px == 2) {
+    base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
+    dimension_divisor_ = 2;  // scale down the max cols and rows when publishing
+  } else if (every_nth_px == 4) {
+    base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 0);
+    dimension_divisor_ = 2;
   }
-
-  void createMask(uint8_t every_nth_px = 2, int rows = 480, int cols = 640)
-  {
-    cv::Mat base;
-    if (every_nth_px == 2) {
-      base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
-      dimension_divisor_ = 2;  // scale down the max cols and rows when publishing
-    } else if (every_nth_px == 4) {
-      base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 0);
-      dimension_divisor_ = 2;
-    }
-    if (every_nth_px != 1) {
-      cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
-    } else {
-      dimension_divisor_ = 1;
-    }
-    assert(dimension_divisor_ > 0);  // unknown every_nth_px value
+  if (every_nth_px != 1) {
+    cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
+  } else {
+    dimension_divisor_ = 1;
   }
+  assert(dimension_divisor_ > 0);  // unknown every_nth_px value
+}
 
-  dv::EventStreamSlicer event_slicer_;
-  dv::IMUStreamSlicer imu_slicer_;
-  std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
-  std::unique_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
-
-  dv::Accumulator accumulator_;
-  dv::Frame event_frame_;
-  std::mutex frame_mutex_;
-  std::optional<dv::Frame> latest_frame_;
-
-  std::optional<dv::io::camera::DVXplorerM> camera_;
-  rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
-  int64_t last_timestamp;
-  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
-
-  std::thread thread_;
-
-  // mask filtering
-  cv::Mat mask_;
-  int dimension_divisor_ = -1;
-
-  // uint64_t event_slicer_callback_counter_;
-};
+// uint64_t event_slicer_callback_counter_;
 
 int main(int argc, char ** argv)
 {
