@@ -52,6 +52,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 #ifdef OFFLINE_TESTING
   startSimulation();
 #else
+  startCamera();
   // ini filters
   lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore> >(
     *camera_->getEventResolution(), 50.0f);
@@ -225,8 +226,11 @@ std::vector<uint8_t> EventCameraNode::compressBuffer(const uint8_t * data, size_
 
 void EventCameraNode::createMask(int every_nth_px, cv::Size size)
 {
+  RCLCPP_INFO(this->get_logger(), "Mask size requested: %d x %d", size.width, size.height);
   int rows = size.height;
   int cols = size.width;
+  assert(rows % 2 == 0 && cols % 2 == 0);
+  assert(rows > 0 && cols > 0);
   cv::Mat base;
   if (every_nth_px == 2) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
