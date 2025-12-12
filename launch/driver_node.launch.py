@@ -1,5 +1,6 @@
-from launch import LaunchDescription
 from launch_ros.actions import Node
+
+from launch import LaunchDescription
 
 
 def generate_launch_description():
@@ -11,9 +12,9 @@ def generate_launch_description():
                 name="event_camera_node",
                 parameters=[
                     {
-                        "slice_period_ms": 10,  # override default 5ms
-                        "max_events": 100000,  # override default 50000
-                        "every_nth_px": 4,  # override default 2
+                        "slice_period_ms": 5,  # override default 5ms
+                        "max_events": 50000,  # override default 50000
+                        "every_nth_px": 2,  # override default 2
                     }
                 ],
             )

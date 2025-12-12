@@ -52,12 +52,19 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 #ifdef OFFLINE_TESTING
   startSimulation();
 #else
+  // ini camera
   startCamera();
+
+  if (!camera_) {
+    RCLCPP_FATAL(get_logger(), "Camera not initialized!");
+    throw std::runtime_error("Camera not initialized");
+  }
   // ini filters
   lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore> >(
     *camera_->getEventResolution(), 50.0f);
   createMask(every_nth_px_, *camera_->getEventResolution());
   em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore> >(mask_);
+
 #ifdef LIVE_VISUALIZATION
   // Initialize an accumulator with some resolution
   accumulator_ = dv::Accumulator(*camera_->getEventResolution());
