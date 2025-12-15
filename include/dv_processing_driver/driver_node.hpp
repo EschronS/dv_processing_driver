@@ -15,6 +15,7 @@
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 
 #include "dv-processing/core/filters.hpp"
+#include "event_camera_msgs/msg/event_packet.hpp"
 
 class EventCameraNode : public rclcpp::Node
 {
@@ -33,7 +34,6 @@ private:
   // Utilities
   std::vector<uint8_t> compressBuffer(const uint8_t * data, size_t size);
   void createMask(int every_nth_px = 2, cv::Size size = cv::Size(640, 480));
-  void process_events();  // placeholder if you have other internal processing
 
   // Member variables
   std::chrono::milliseconds slice_period_;
@@ -57,6 +57,13 @@ private:
   rclcpp::Publisher<event_camera_msgs::msg::EventPacket>::SharedPtr compressed_event_pub_;
 
   std::thread thread_;
+
+  event_camera_msgs::msg::EventPacket::UniquePtr eventMsg_;
+  void publishCompEvents(const dv::EventStore & store);
+  uint64_t seq_{0};
+  uint64_t reserveSize_{0};
+  rclcpp::Time rosBaseTime_;
+  unsigned long sensorTime_0;
 
   // mask filtering
   cv::Mat mask_;

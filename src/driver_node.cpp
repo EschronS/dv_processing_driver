@@ -37,6 +37,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("dvx/events", qos_event);
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("dvx/imu", qos_imu);
   last_timestamp = 0;
+  static_assert(std::endian::native == std::endian::little);
+  rosBaseTime_ =
+    rclcpp::Time((this->get_clock()->now().nanoseconds() / 1000ULL) * 1000ULL, RCL_SYSTEM_TIME);
 
   compressed_event_pub_ =
     create_publisher<event_camera_msgs::msg::EventPacket>("dvx/events_cmp", qos_event);
@@ -150,6 +153,36 @@ void EventCameraNode::publishEvents(const dv::EventStore & store)
   // }
 
   event_pub_->publish(std::move(msg));
+}
+
+void EventCameraNode::publishCompEvents(const dv::EventStore & store)
+{
+  uint64_t t =
+    duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  if (compressed_event_pub_->get_subscription_count() > 0) {
+    if (!eventMsg_) {
+      eventMsg_.reset(new event_camera_msgs::msg::EventPacket());
+      eventMsg_->header.frame_id = "dvs";
+      eventMsg_->header.stamp = rclcpp::Time(t, RCL_SYSTEM_TIME);
+      eventMsg_->encoding = "libcaer_cmp";
+      eventMsg_->seq = seq_++;
+      eventMsg_->width = 640ULL;
+      eventMsg_->height = 480ULL;
+      eventMsg_->is_bigendian = false;
+      eventMsg_->events.reserve(store.size());  // changed from libcaer logic
+    }
+    static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
+    event_packed_compression::convert_polarity_events_compressed(
+      eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
+    // const auto & events = eventMsg_->events;
+
+    compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+    // lastMessageTime_ = t;
+  } else {
+    if (eventMsg_) {
+      eventMsg_.reset();
+    }
+  }
 }
 
 void EventCameraNode::publishImu(const dv::IMUPacket & packet)

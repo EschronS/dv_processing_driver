@@ -18,7 +18,12 @@
 
 #include <bitset>
 #include <cstdint>
+#include <dv-processing/io/camera/dvxplorer_m.hpp>
+#include <rclcpp/time.hpp>
 #include <vector>
+
+#include "dv-processing/core/core.hpp"
+#include "event_camera_msgs/msg/event_packet.hpp"
 
 namespace event_packed_compression
 {
@@ -93,7 +98,9 @@ static inline void flush_state(
   }
 }
 
-size_t convert_polarity_events_compressed(...);
+size_t convert_polarity_events_compressed(
+  event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
+  const rclcpp::Time & baseTime, uint64_t * sensorTime_0);
 
 }  // namespace event_packed_compression
 

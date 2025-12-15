@@ -5,11 +5,13 @@
 #include <event_camera_msgs/msg/event_packet.hpp>
 #include <rclcpp/time.hpp>
 
+#include "event_camera_msgs/msg/event_packet.hpp"
+
 namespace event_packed_compression
 {
 
 size_t convert_polarity_events_compressed(
-  event_camera_msgs::msg::EventPacket * msg, const dv::EventStore & store,
+  event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
   const rclcpp::Time & baseTime, uint64_t * sensorTime_0)
 {
   if (store.isEmpty()) {

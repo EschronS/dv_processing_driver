@@ -35,6 +35,7 @@ find_package(ZLIB REQUIRED)
 # Executable definition
 add_executable(dv_processing_driver_node
   src/driver_node.cpp
+  src/compressed_encoder.cpp # this makes the encoding logic work
 )
 
 # Include directories
