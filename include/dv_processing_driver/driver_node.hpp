@@ -7,6 +7,7 @@
 #include <dv-processing/noise/frequency_filters.hpp>
 #include <dvs_msgs/msg/event.hpp>
 #include <dvs_msgs/msg/event_array.hpp>
+#include <event_camera_msgs/msg/event_packet.hpp>
 #include <memory>
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
@@ -53,7 +54,7 @@ private:
   rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   int64_t last_timestamp;
-  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr compressed_event_pub_;
+  rclcpp::Publisher<event_camera_msgs::msg::EventPacket>::SharedPtr compressed_event_pub_;
 
   std::thread thread_;
 

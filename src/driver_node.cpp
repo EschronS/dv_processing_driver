@@ -9,6 +9,9 @@
 #include <rclcpp/serialized_message.hpp>
 #include <thread>
 
+#include "dv_processing_driver/compressed_encoder.hpp"
+#include "event_camera_msgs/msg/event_packet.hpp"
+
 // #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
 
@@ -36,7 +39,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   last_timestamp = 0;
 
   compressed_event_pub_ =
-    create_publisher<std_msgs::msg::UInt8MultiArray>("dv/events_cmp", qos_event);
+    create_publisher<event_camera_msgs::msg::EventPacket>("dvx/events_cmp", qos_event);
 
   // slicers
   event_slicer_.doEveryTimeInterval(slice_period_, [&](const dv::EventStore & store) {
