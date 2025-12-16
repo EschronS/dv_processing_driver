@@ -2,9 +2,11 @@
 
 #include <zlib.h>
 
+#include <chrono>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <rclcpp/qos.hpp>
+#include <rclcpp/rate.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <thread>
@@ -12,7 +14,7 @@
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-// #define OFFLINE_TESTING
+#define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
 
 // IMPORTANT FOR VISUALIZATION
@@ -38,7 +40,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("event_camera/imu", qos_imu);
   last_timestamp = 0;
   static_assert(std::endian::native == std::endian::little);
-  rosBaseTime_ =
+  rosBaseTime_ =  // time on recording start (ros time)
     rclcpp::Time((this->get_clock()->now().nanoseconds() / 1000ULL) * 1000ULL, RCL_SYSTEM_TIME);
 
   compressed_event_pub_ =
@@ -158,13 +160,10 @@ void EventCameraNode::publishEvents(const dv::EventStore & store)
 
 void EventCameraNode::publishCompEvents(const dv::EventStore & store)
 {
-  uint64_t t =
-    duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   if (compressed_event_pub_->get_subscription_count() > 0) {
     if (!eventMsg_) {
       eventMsg_.reset(new event_camera_msgs::msg::EventPacket());
       eventMsg_->header.frame_id = "events";
-      eventMsg_->header.stamp = rclcpp::Time(t, RCL_SYSTEM_TIME);
       eventMsg_->encoding = "libcaer_cmp";
       eventMsg_->seq = seq_++;
       eventMsg_->width = 640ULL;
@@ -199,7 +198,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
     // slicer inludes identical measurements in multiple slices, drop those
     if (msg_ts <= last_timestamp) continue;
     sensor_msgs::msg::Imu msg;
-    msg.header.stamp = rclcpp::Time(msg_ts);
+    msg.header.stamp = rclcpp::Time(msg_ts, RCL_SYSTEM_TIME);
     msg.header.frame_id = "imu";
     msg.angular_velocity.x = measure.gyroscopeX * DEG_TO_RADIANS;
     msg.angular_velocity.y = measure.gyroscopeY * DEG_TO_RADIANS;
@@ -218,6 +217,10 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
 void EventCameraNode::startCamera()
 {
   camera_.emplace();
+  if (!camera_) {
+    RCLCPP_FATAL(get_logger(), "Camera not initialized!");
+    throw std::runtime_error("Camera not initialized");
+  }
 
   thread_ = std::thread([&]() {
     while (rclcpp::ok() && camera_->isRunning()) {
@@ -241,15 +244,22 @@ void EventCameraNode::startCamera()
 void EventCameraNode::startSimulation()
 {
   thread_ = std::thread([&]() {
+    // auto t = std::chrono::system_clock::now();
+    // duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+    // .count();
+    const auto period = std::chrono::milliseconds(1);
+    auto next_time = std::chrono::steady_clock::now();
     for (int i = 0; i < 20000; i++) {
-      auto imus = dv::data::generate::levelImuWithNoise(i * 1000, 0.1f, 0.01f, i);
+      next_time += period;
+      auto imus = dv::data::generate::levelImuWithNoise(i * 1000ULL, 0.1f, 0.01f, i);
       auto events = dv::data::generate::uniformEventsWithinTimeRange(
-        i * 1000, 1ms, cv::Size(640, 480), 10000, i);
+        i * 1000ULL, 1ms, cv::Size(640, 480), 1000, i);
 
       imu_slicer_.accept(imus);
       event_slicer_.accept(events);
 
-      std::this_thread::sleep_for(1ms);
+      // auto diff_t = std::chrono::system_clock::now() - t;
+      std::this_thread::sleep_until(next_time);
     }
   });
   thread_.detach();

@@ -34,9 +34,8 @@ size_t convert_polarity_events_compressed(
       duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
         .count();
 
-    msg->header.stamp =
-      rclcpp::Time(sensorPacketTime * 1000 + baseTime.nanoseconds(), RCL_SYSTEM_TIME);
-    msg->time_base = t;
+    msg->header.stamp = rclcpp::Time(sensorPacketTime * 1000ULL, RCL_SYSTEM_TIME);
+    msg->time_base = t;  // system time = ros time (taken from libcaer_driver)
     *sensorTime_0 = sensorPacketTime;
   }
 
