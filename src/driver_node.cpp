@@ -12,7 +12,7 @@
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-#define OFFLINE_TESTING
+// #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
 
 // IMPORTANT FOR VISUALIZATION
@@ -50,7 +50,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
       RCLCPP_WARN(
         get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
     }
-    publishEvents(store);  // check real runtime of callback
+    // publishEvents(store);  // check real runtime of callback
     publishCompEvents(store);
   });
 
@@ -171,6 +171,7 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       eventMsg_->height = 480ULL;
       eventMsg_->is_bigendian = false;
       eventMsg_->events.reserve(store.size());  // changed from libcaer logic
+      // should preallocate space for all current events
     }
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
     event_packed_compression::convert_polarity_events_compressed(
