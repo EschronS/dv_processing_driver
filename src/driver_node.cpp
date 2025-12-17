@@ -226,11 +226,13 @@ void EventCameraNode::startCamera()
     while (rclcpp::ok() && camera_->isRunning()) {
       if (auto events = camera_->getNextEventBatch(); events.has_value()) {
         lp_filter_->accept(*events);
-        const dv::EventStore filtered = lp_filter_->generateEvents();
+        const dv::EventStore freq_filtered = lp_filter_->generateEvents();
+        em_filter_->accept(freq_filtered);
+        const dv::EventStore mask_filtered = em_filter_->generateEvents();
 #ifdef LIVE_VISUALIZATION
-        accumulator_.accept(filtered);
+        accumulator_.accept(mask_filtered);
 #endif
-        event_slicer_.accept(filtered);
+        event_slicer_.accept(mask_filtered);
       }
       if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
         imu_slicer_.accept(*imus);
@@ -287,19 +289,18 @@ void EventCameraNode::createMask(int every_nth_px, cv::Size size)
   assert(rows % 2 == 0 && cols % 2 == 0);
   assert(rows > 0 && cols > 0);
   cv::Mat base;
-  if (every_nth_px == 2) {
+  if (every_nth_px == 1) {
+    base = (cv::Mat_<uchar>(2, 2) << 255, 255, 255, 255);  // mask which lets everything through
+    dimension_divisor_ = 1;  // scale down the max cols and rows when publishing
+  } else if (every_nth_px == 2) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
     dimension_divisor_ = 2;  // scale down the max cols and rows when publishing
   } else if (every_nth_px == 4) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 0);
     dimension_divisor_ = 2;
   }
-  if (every_nth_px != 1) {
-    cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
-  } else {
-    dimension_divisor_ = 1;
-  }
-  assert(dimension_divisor_ > 0);  // unknown every_nth_px value
+  cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
+  assert(dimension_divisor_ > 0);               // unknown every_nth_px value
 }
 
 // uint64_t event_slicer_callback_counter_;
