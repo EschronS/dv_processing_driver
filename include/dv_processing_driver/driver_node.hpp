@@ -17,10 +17,13 @@
 #include "dv-processing/core/filters.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
+#define USE_PUB_THREAD
+
 class EventCameraNode : public rclcpp::Node
 {
 public:
   EventCameraNode();
+  ~EventCameraNode();
 
   bool getLatestFrame(dv::Frame & out);
   void startCamera();
@@ -68,4 +71,14 @@ private:
   // mask filtering
   cv::Mat mask_;
   int dimension_divisor_ = -1;
+
+  // publishing thread
+#ifdef USE_PUB_THREAD
+  std::queue<std::unique_ptr<event_camera_msgs::msg::EventPacket>> pubQueue_;
+  std::mutex pubMutex_;
+  std::condition_variable pubCv_;
+  std::shared_ptr<std::thread> pubThread_;
+  std::atomic_bool keepPubThreadRunning_{false};
+  void publishingThread();
+#endif
 };

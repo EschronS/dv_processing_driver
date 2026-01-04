@@ -5,6 +5,7 @@
 #include <chrono>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
+#include <rclcpp/logger.hpp>
 #include <rclcpp/qos.hpp>
 #include <rclcpp/rate.hpp>
 #include <rclcpp/serialization.hpp>
@@ -16,6 +17,7 @@
 
 #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
+#define USE_PUB_THREAD
 
 // IMPORTANT FOR VISUALIZATION
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
@@ -57,6 +59,11 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   });
 
   imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
+
+#ifdef USE_PUB_THREAD
+  keepPubThreadRunning_.store(true);
+  pubThread_ = std::make_shared<std::thread>(&EventCameraNode::publishingThread, this);
+#endif
 
 #ifdef OFFLINE_TESTING
   startSimulation();
@@ -117,6 +124,38 @@ bool EventCameraNode::getLatestFrame(dv::Frame & out)
   return true;
 }
 
+#ifdef USE_PUB_THREAD
+void EventCameraNode::publishingThread()
+{
+  const auto duration = std::chrono::milliseconds(100);
+  while (rclcpp::ok() && keepPubThreadRunning_.load()) {
+    std::unique_lock<std::mutex> lock(pubMutex_);
+    pubCv_.wait_for(lock, duration);
+    while (!pubQueue_.empty()) {
+      compressed_event_pub_->publish(std::move(pubQueue_.front()));
+      pubQueue_.pop();
+    }
+  }
+  RCLCPP_WARN(get_logger(), "publishing thread exited!");
+}
+#endif
+
+EventCameraNode::~EventCameraNode()
+{
+#ifdef USE_PUB_THREAD
+  if (pubThread_) {
+    {
+      keepPubThreadRunning_.store(false);
+      std::unique_lock<std::mutex> lock(pubMutex_);
+      pubCv_.notify_all();
+    }
+    pubThread_->join();
+    pubThread_.reset();
+  }
+  RCLCPP_WARN(get_logger(), "publishing thread destroyed proprely!");
+#endif
+}
+
 // publisher implimentations
 void EventCameraNode::publishEvents(const dv::EventStore & store)
 {
@@ -175,9 +214,16 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
     event_packed_compression::convert_polarity_events_compressed(
       eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
-    // const auto & events = eventMsg_->events;
 
+#ifdef USE_PUB_THREAD
+    {
+      std::unique_lock<std::mutex> lock(pubMutex_);
+      pubQueue_.push(std::move(eventMsg_));
+      pubCv_.notify_all();
+    }
+#else
     compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+#endif
     // lastMessageTime_ = t;
   } else {
     if (eventMsg_) {
@@ -193,7 +239,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
 
   std::vector<dv::IMU> imu_vec = packet.elements;
   for (const auto & measure : imu_vec) {
-    // NOTE: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
+    // TODO: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
     int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
     // slicer inludes identical measurements in multiple slices, drop those
     if (msg_ts <= last_timestamp) continue;
