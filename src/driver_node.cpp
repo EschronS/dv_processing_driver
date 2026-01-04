@@ -3,6 +3,7 @@
 #include <zlib.h>
 
 #include <chrono>
+#include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <rclcpp/logger.hpp>
@@ -129,12 +130,19 @@ void EventCameraNode::publishingThread()
 {
   const auto duration = std::chrono::milliseconds(100);
   while (rclcpp::ok() && keepPubThreadRunning_.load()) {
-    std::unique_lock<std::mutex> lock(pubMutex_);
-    pubCv_.wait_for(lock, duration);
-    while (!pubQueue_.empty()) {
-      compressed_event_pub_->publish(std::move(pubQueue_.front()));
+    std::unique_ptr<event_camera_msgs::msg::EventPacket> msg;
+    {
+      std::unique_lock<std::mutex> lock(pubMutex_);
+      pubCv_.wait_for(lock, duration);
+      if (pubQueue_.empty()) return;
+      msg = std::move(pubQueue_.front());
       pubQueue_.pop();
+      // while (!pubQueue_.empty()) {
+      //   compressed_event_pub_->publish(std::move(pubQueue_.front()));
+      //   pubQueue_.pop();
+      // }
     }
+    compressed_event_pub_->publish(std::move(msg));
   }
   RCLCPP_WARN(get_logger(), "publishing thread exited!");
 }
