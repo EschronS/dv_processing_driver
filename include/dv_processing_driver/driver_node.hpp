@@ -18,6 +18,7 @@
 #include "event_camera_msgs/msg/event_packet.hpp"
 
 #define USE_PUB_THREAD
+#define OFFLINE_TESTING
 
 class EventCameraNode : public rclcpp::Node
 {
@@ -81,4 +82,12 @@ private:
   std::atomic_bool keepPubThreadRunning_{false};
   void publishingThread();
 #endif
+
+  // #ifdef OFFLINE_TESTING
+  //   std::atomic_bool keepSimulationThreadRunning_{false};
+  //   std::shared_ptr<std::thread> simulationThread_;
+  // #else
+  //   std::atomic_bool keepCameraThreadRunning_{false};
+  //   std::shared_ptr<std::thread> cameraThread_;
+  // #endif
 };

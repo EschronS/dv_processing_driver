@@ -162,6 +162,17 @@ EventCameraNode::~EventCameraNode()
   }
   RCLCPP_WARN(get_logger(), "publishing thread destroyed proprely!");
 #endif
+  // #ifdef OFFLINE_TESTING
+  //   keepSimulationThreadRunning_.store(false);
+  //   if (simulationThread_.joinable()) {
+  //     simulationThread_.join();
+  //   }
+  // #else
+  //   keepCameraThreadRunning_.store(false);
+  //   if (cameraThread_.joinable()) {
+  //     cameraThread_.join();
+  //   }
+  // #endif
 }
 
 // publisher implimentations
@@ -268,6 +279,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
 }
 
 // real camera case
+#ifndef OFFLINE_TESTING
 void EventCameraNode::startCamera()
 {
   camera_.emplace();
@@ -295,7 +307,7 @@ void EventCameraNode::startCamera()
   });
   thread_.detach();
 }
-
+#else
 // offline signal simulation for testing
 void EventCameraNode::startSimulation()
 {
@@ -320,6 +332,7 @@ void EventCameraNode::startSimulation()
   });
   thread_.detach();
 }
+#endif
 
 std::vector<uint8_t> EventCameraNode::compressBuffer(const uint8_t * data, size_t size)
 {
