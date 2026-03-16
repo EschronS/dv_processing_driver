@@ -1,5 +1,6 @@
 #include "dv_processing_driver/driver_node.hpp"
 
+#include <sys/types.h>
 #include <zlib.h>
 
 #include <chrono>
@@ -15,9 +16,9 @@
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-#define OFFLINE_TESTING
+// #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
-#define USE_PUB_THREAD
+// #define USE_PUB_THREAD
 
 // IMPORTANT FOR VISUALIZATION
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
@@ -210,10 +211,14 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       eventMsg_->is_bigendian = false;
       eventMsg_->events.reserve(store.size());  // changed from libcaer logic
       // should preallocate space for all current events
+      // we can do this becuase we always publish the whole event store immediately
     }
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
-    event_packed_compression::convert_polarity_events_compressed(
+    int64_t ret = event_packed_compression::convert_polarity_events_compressed(
       eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
+    if (ret <= 0) {
+      RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
+    }
 
 #ifdef USE_PUB_THREAD
     {
@@ -240,7 +245,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
   std::vector<dv::IMU> imu_vec = packet.elements;
   for (const auto & measure : imu_vec) {
     // TODO: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
-    int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000ULL;
+    int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000LL;
     // slicer inludes identical measurements in multiple slices, drop those
     if (msg_ts <= last_timestamp) continue;
     sensor_msgs::msg::Imu msg;

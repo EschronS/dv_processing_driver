@@ -10,6 +10,7 @@
 #include <event_camera_msgs/msg/event_packet.hpp>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
@@ -17,7 +18,7 @@
 #include "dv-processing/core/filters.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-#define USE_PUB_THREAD
+// #define USE_PUB_THREAD
 
 class EventCameraNode : public rclcpp::Node
 {
