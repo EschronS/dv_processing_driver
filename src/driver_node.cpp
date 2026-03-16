@@ -216,9 +216,6 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
     int64_t ret = event_packed_compression::convert_polarity_events_compressed(
       eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
-    if (ret <= 0) {
-      RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
-    }
 
 #ifdef USE_PUB_THREAD
     {
@@ -227,7 +224,14 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       pubCv_.notify_all();
     }
 #else
-    compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+    if (ret <= 0) {  // invalid timestamp
+      RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
+      if (eventMsg_) {
+        eventMsg_.reset();  // delete currently constr. eventMsg
+      }
+    } else {
+      compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+    }
 #endif
     // lastMessageTime_ = t;
   } else {
