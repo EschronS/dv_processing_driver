@@ -25,18 +25,26 @@ size_t convert_polarity_events_compressed(
   constexpr uint16_t Y_HIGH_MASK = ~Y_LOW_MASK;  // highest 13 bits
 
   const auto & first = store.front();
-  const uint64_t sensorPacketTime = first.timestamp();
+  // const uint64_t sensorPacketTime = first.timestamp();
+  const int64_t sensorPacketTime = store.front().timestamp();
+  if (sensorPacketTime <= 0) {
+    return sensorPacketTime;
+  }
+
+  const uint64_t sensorPacketTimeU = static_cast<uint64_t>(sensorPacketTime);
+
+  msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
+  *sensorTime_0 = sensorPacketTimeU;
 
   auto & events = msg->events;
   if (events.empty()) {
-    // in contrast to libcaer_driver, we use ROS-time in time-base field
+    msg->header.stamp = rclcpp::Time(sensorPacketTime * 1000ULL, RCL_SYSTEM_TIME);
+    *sensorTime_0 = sensorPacketTime;
+    // in contrast to libcaer_driver, we use ROS-time in timebase field
     uint64_t t =
       duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
         .count();
-
-    msg->header.stamp = rclcpp::Time(sensorPacketTime * 1000ULL, RCL_SYSTEM_TIME);
     msg->time_base = t;  // system time = ros time (taken from libcaer_driver)
-    *sensorTime_0 = sensorPacketTime;
   }
 
   const uint64_t dt_0 = sensorPacketTime - *sensorTime_0;
