@@ -326,7 +326,10 @@ void EventCameraNode::startCamera()
     RCLCPP_FATAL(get_logger(), "Camera not initialized!");
     throw std::runtime_error("Camera not initialized");
   }
+}
 
+void EventCameraNode::startCameraThread()
+{
   thread_ = std::thread([&]() {
     while (rclcpp::ok() && camera_->isRunning()) {
       if (auto events = camera_->getNextEventBatch(); events.has_value()) {
@@ -346,6 +349,7 @@ void EventCameraNode::startCamera()
   });
   thread_.detach();
 }
+
 #else
 // offline signal simulation for testing
 void EventCameraNode::startSimulation()
