@@ -33,12 +33,14 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   slice_period_ = std::chrono::milliseconds(slice_ms);
   max_events_ = this->declare_parameter<int>("max_events", 50000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
+  RCLCPP_INFO(get_logger(), "stored setup params");
 
   // publishers
   rclcpp::QoS qos_event(rclcpp::KeepLast(1));
   qos_event.best_effort();  // for imu not us best effort
   rclcpp::QoS qos_imu{rclcpp::KeepAll()};
   qos_imu.reliable();
+  RCLCPP_INFO(get_logger(), "defined QoS for publishers");
 
   event_pub_ = create_publisher<dvs_msgs::msg::EventArray>("event_camera/events_old", qos_event);
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("event_camera/imu", qos_imu);
@@ -49,6 +51,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 
   compressed_event_pub_ =
     create_publisher<event_camera_msgs::msg::EventPacket>("event_camera/events", qos_event);
+  RCLCPP_INFO(get_logger(), "initialized publishers");
 
   // slicers
   event_slicer_.doEveryTimeInterval(slice_period_, [&](const dv::EventStore & store) {
@@ -59,8 +62,10 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     // publishEvents(store);  // check real runtime of callback
     publishCompEvents(store);
   });
+  RCLCPP_INFO(get_logger(), "initialized event slicer");
 
   imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
+  RCLCPP_INFO(get_logger(), "initialized imu slicer");
 
 #ifdef USE_PUB_THREAD
   keepPubThreadRunning_.store(true);
@@ -72,6 +77,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 #else
   // ini camera
   startCamera();
+  RCLCPP_INFO(get_logger(), "initialized the camera");
 
   if (!camera_) {
     RCLCPP_FATAL(get_logger(), "Camera not initialized!");
@@ -82,6 +88,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     *camera_->getEventResolution(), 50.0f);
   createMask(every_nth_px_, *camera_->getEventResolution());
   em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore> >(mask_);
+  RCLCPP_INFO(get_logger(), "initialized the events filters");
+  startCameraThread();
+  RCLCPP_INFO(get_logger(), "started camera thread");
 
 #ifdef LIVE_VISUALIZATION
   // Initialize an accumulator with some resolution
