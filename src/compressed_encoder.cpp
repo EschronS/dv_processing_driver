@@ -26,20 +26,22 @@ size_t convert_polarity_events_compressed(
 
   const auto & first = store.front();
   // const uint64_t sensorPacketTime = first.timestamp();
-  const int64_t sensorPacketTime = store.front().timestamp();
+  // timestamp of the first event in the event-packet
+  const int64_t sensorPacketTime = store.getLowestTime();
   if (sensorPacketTime <= 0) {
     return sensorPacketTime;
   }
 
   const uint64_t sensorPacketTimeU = static_cast<uint64_t>(sensorPacketTime);
 
+  // do this always because we publish in fixed time intervall
   msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
   *sensorTime_0 = sensorPacketTimeU;
 
   auto & events = msg->events;
-  if (events.empty()) {
-    msg->header.stamp = rclcpp::Time(sensorPacketTime * 1000ULL, RCL_SYSTEM_TIME);
-    *sensorTime_0 = sensorPacketTime;
+  if (events.empty()) {  // the first packet for this msg
+    msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
+    *sensorTime_0 = sensorPacketTimeU;  // start time of the first event in the first packet
     // in contrast to libcaer_driver, we use ROS-time in timebase field
     uint64_t t =
       duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -47,7 +49,7 @@ size_t convert_polarity_events_compressed(
     msg->time_base = t;  // system time = ros time (taken from libcaer_driver)
   }
 
-  const uint64_t dt_0 = sensorPacketTime - *sensorTime_0;
+  const uint64_t dt_0 = sensorPacketTimeU - *sensorTime_0;
   uint16_t timeHigh = dt_0 & TIME_HIGH_MASK;
   uint64_t timeLow = dt_0 & TIME_LOW_MASK;
 
