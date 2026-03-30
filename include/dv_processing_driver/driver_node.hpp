@@ -28,6 +28,7 @@ public:
 
   bool getLatestFrame(dv::Frame & out);
   void startCamera();
+  void startCameraThread();
   void startSimulation();
 
 private:
@@ -66,6 +67,7 @@ private:
   void publishCompEvents(const dv::EventStore & store);
   uint64_t seq_{0};
   uint64_t reserveSize_{0};
+  int64_t lastValidSliceTime_{0};
   rclcpp::Time rosBaseTime_;
   unsigned long sensorTime_0;
 
