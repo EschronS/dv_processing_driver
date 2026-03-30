@@ -219,6 +219,27 @@ void EventCameraNode::publishEvents(const dv::EventStore & store)
 
 void EventCameraNode::publishCompEvents(const dv::EventStore & store)
 {
+  if (store.isEmpty()) return;
+
+  const int64_t sliceBaseTime = store.getLowestTime();
+  if (sliceBaseTime <= 0) {
+    RCLCPP_WARN(get_logger(), "Store has zero/negative base timestamp, dropping slice");
+    if (eventMsg_) {
+      eventMsg_.reset();  // delete currently constr. eventMsg
+    }
+    return;
+  }
+  if (sliceBaseTime < lastValidSliceTime_) {
+    RCLCPP_WARN(
+      get_logger(), "Timestamp regression detected: %ld < %ld, dropping slice", sliceBaseTime,
+      lastValidSliceTime_);
+    if (eventMsg_) {
+      eventMsg_.reset();  // delete currently constr. eventMsg
+    }
+    return;
+  }
+  lastValidSliceTime_ = sliceBaseTime;
+
   if (compressed_event_pub_->get_subscription_count() > 0) {
     if (!eventMsg_) {
       eventMsg_.reset(new event_camera_msgs::msg::EventPacket());
