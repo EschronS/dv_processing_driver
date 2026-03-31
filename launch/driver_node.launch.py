@@ -14,7 +14,7 @@ def generate_launch_description():
                     {
                         "slice_period_ms": 5,  # override default 5ms
                         "max_events": 50000,  # override default 50000
-                        "every_nth_px": 2,  # override default 2
+                        "every_nth_px": 4,  # override default 2, 4 effectively halfs resolution
                     }
                 ],
             )
