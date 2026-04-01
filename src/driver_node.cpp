@@ -31,7 +31,8 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   //params
   auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
   slice_period_ = std::chrono::milliseconds(slice_ms);
-  max_events_ = this->declare_parameter<int>("max_events", 50000);
+  max_events_ = this->declare_parameter<int>("max_events", 10000);
+  max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
   RCLCPP_INFO(get_logger(), "stored setup params");
 
@@ -54,7 +55,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   RCLCPP_INFO(get_logger(), "initialized publishers");
 
   // slicers
-  event_slicer_.doEveryTimeInterval(slice_period_, [&](const dv::EventStore & store) {
+  event_slicer_.doEveryNumberOfElements(1000ULL, [&](const dv::EventStore & store) {
     if (store.size() > max_events_) {
       RCLCPP_WARN(
         get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
@@ -258,7 +259,8 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       eventMsg_->width = 640ULL;
       eventMsg_->height = 480ULL;
       eventMsg_->is_bigendian = false;
-      eventMsg_->events.reserve(store.size());  // changed from libcaer logic
+      eventMsg_->events.reserve(reserveSize_);
+      // eventMsg_->events.reserve(store.size());  // changed from libcaer logic
       // should preallocate space for all current events
       // we can do this becuase we always publish the whole event store immediately
     }
@@ -279,7 +281,14 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
         eventMsg_.reset();  // delete currently constr. eventMsg
       }
     } else {
-      compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+      const auto & events = eventMsg_->events;
+      if (
+        store.getHighestTime() - lastMsgEndTime_ > max_msg_duration_ ||
+        events.size() > max_events_) {  // publish
+        lastMsgEndTime_ = store.getHighestTime();
+        reserveSize_ = std::max(reserveSize_, events.size());
+        compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+      }
     }
 #endif
     // lastMessageTime_ = t;

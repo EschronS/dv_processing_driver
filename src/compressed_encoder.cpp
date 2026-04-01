@@ -35,8 +35,8 @@ size_t convert_polarity_events_compressed(
   const uint64_t sensorPacketTimeU = static_cast<uint64_t>(sensorPacketTime);
 
   // do this always because we publish in fixed time intervall
-  msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
-  *sensorTime_0 = sensorPacketTimeU;
+  // msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
+  // *sensorTime_0 = sensorPacketTimeU;
 
   auto & events = msg->events;
   if (events.empty()) {  // the first packet for this msg

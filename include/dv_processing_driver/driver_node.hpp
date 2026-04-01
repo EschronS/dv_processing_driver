@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <cstdint>
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/core/frame/accumulator.hpp>
 #include <dv-processing/data/generate.hpp>
@@ -43,6 +44,7 @@ private:
   // Member variables
   std::chrono::milliseconds slice_period_;
   size_t max_events_;
+  size_t max_msg_duration_;
   int every_nth_px_;
 
   dv::EventStreamSlicer event_slicer_;
@@ -67,6 +69,7 @@ private:
   void publishCompEvents(const dv::EventStore & store);
   uint64_t seq_{0};
   uint64_t reserveSize_{0};
+  uint64_t lastMsgEndTime_{0};
   int64_t lastValidSliceTime_{0};
   rclcpp::Time rosBaseTime_;
   unsigned long sensorTime_0;
