@@ -300,8 +300,9 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
     // TODO: imu timestamp will overflow after circa 31 minutes, need to handle this explicitly
     int64_t msg_ts = static_cast<int64_t>(measure.timestamp) * 1000LL;
     // slicer inludes identical measurements in multiple slices, drop those
-    if (msg_ts < last_timestamp) continue;
-    if (msg_ts == last_timestamp) ++msg_ts;  // enforce monotonic ts (esp. for USLAM)
+    // if (msg_ts < last_timestamp) continue;
+    if (msg_ts <= last_timestamp)
+      msg_ts += 1000000LL;  // enforce monotonic ts (esp. for USLAM) with 1ms diff.
     sensor_msgs::msg::Imu msg;
     msg.header.stamp = rclcpp::Time(msg_ts, RCL_SYSTEM_TIME);
     msg.header.frame_id = "imu";
