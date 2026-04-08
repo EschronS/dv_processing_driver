@@ -18,7 +18,7 @@
 
 #include <bitset>
 #include <cstdint>
-#include <dv-processing/io/camera/dvxplorer_m.hpp>
+#include <dv-processing/io/camera/dvxplorer.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 #include <vector>

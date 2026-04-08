@@ -4,7 +4,7 @@
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/core/frame/accumulator.hpp>
 #include <dv-processing/data/generate.hpp>
-#include <dv-processing/io/camera/dvxplorer_m.hpp>
+#include <dv-processing/io/camera/dvxplorer.hpp>
 #include <dv-processing/noise/frequency_filters.hpp>
 #include <dvs_msgs/msg/event.hpp>
 #include <dvs_msgs/msg/event_array.hpp>
@@ -57,7 +57,7 @@ private:
   std::mutex frame_mutex_;
   std::optional<dv::Frame> latest_frame_;
 
-  std::optional<dv::io::camera::DVXplorerM> camera_;
+  std::optional<dv::io::camera::DVXplorer> camera_;
   rclcpp::Publisher<dvs_msgs::msg::EventArray>::SharedPtr event_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   int64_t last_timestamp;

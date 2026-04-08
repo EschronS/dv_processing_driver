@@ -29,8 +29,8 @@ using namespace std::chrono_literals;
 EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 {
   //params
-  auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
-  slice_period_ = std::chrono::milliseconds(slice_ms);
+  // auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
+  // slice_period_ = std::chrono::milliseconds(slice_ms);
   max_events_ = this->declare_parameter<int>("max_events", 10000);
   max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
@@ -332,6 +332,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
 #ifndef OFFLINE_TESTING
 void EventCameraNode::startCamera()
 {
+  RCLCPP_INFO(get_logger(), "emplace camera ...");
   camera_.emplace();
   if (!camera_) {
     RCLCPP_FATAL(get_logger(), "Camera not initialized!");

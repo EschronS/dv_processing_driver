@@ -12,9 +12,9 @@ def generate_launch_description():
                 name="event_camera_node",
                 parameters=[
                     {
-                        "slice_period_ms": 5,  # override default 5ms
-                        "max_events": 50000,  # override default 50000
-                        "every_nth_px": 4,  # override default 2, 4 effectively halfs resolution
+                        "max_msg_duration": 1000000,  # [ns]
+                        "max_events": 10000,  # max num of events per msg
+                        "every_nth_px": 1,  # override default 2, 4 effectively halfs resolution
                     }
                 ],
             )
