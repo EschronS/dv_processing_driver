@@ -146,7 +146,7 @@ void EventCameraNode::publishingThread()
     {
       std::unique_lock<std::mutex> lock(pubMutex_);
       pubCv_.wait_for(lock, duration);
-      if (pubQueue_.empty()) return;
+      if (pubQueue_.empty()) continue;
       msg = std::move(pubQueue_.front());
       pubQueue_.pop();
       // while (!pubQueue_.empty()) {
