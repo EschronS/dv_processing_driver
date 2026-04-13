@@ -13,8 +13,9 @@ def generate_launch_description():
                 parameters=[
                     {
                         "max_msg_duration": 1000000,  # [ns]
-                        "max_events": 10000,  # max num of events per msg
-                        "every_nth_px": 1,  # override default 2, 4 effectively halfs resolution
+                        "max_events": 3000,  # max num of events per msg
+                        "every_nth_px": 4,  # override default 2, 4 effectively halfs resolution
+                        "low_pass_freq": 40.0,  # max freq. of events per pix
                     }
                 ],
             )

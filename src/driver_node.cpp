@@ -34,6 +34,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   max_events_ = this->declare_parameter<int>("max_events", 10000);
   max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
+  low_pass_freq_ = this->declare_parameter<int>("low_pass_freq", 40.0);
   RCLCPP_INFO(get_logger(), "stored setup params");
 
   // publishers
@@ -86,7 +87,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   }
   // ini filters
   lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore> >(
-    *camera_->getEventResolution(), 50.0f);
+    *camera_->getEventResolution(), low_pass_freq_);
   createMask(every_nth_px_, *camera_->getEventResolution());
   em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore> >(mask_);
   RCLCPP_INFO(get_logger(), "initialized the events filters");

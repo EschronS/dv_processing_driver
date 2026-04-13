@@ -46,6 +46,7 @@ private:
   size_t max_events_;
   size_t max_msg_duration_;
   int every_nth_px_;
+  float low_pass_freq_;
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
