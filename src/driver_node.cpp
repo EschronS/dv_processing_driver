@@ -19,7 +19,7 @@
 
 // #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
-// #define USE_PUB_THREAD
+#define USE_PUB_THREAD
 
 // IMPORTANT FOR VISUALIZATION
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
@@ -31,9 +31,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   //params
   // auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
   // slice_period_ = std::chrono::milliseconds(slice_ms);
-  max_events_ = this->declare_parameter<int>("max_events", 10000);
+  max_events_ = this->declare_parameter<int>("max_events", 3000);
   max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
-  every_nth_px_ = this->declare_parameter<int>("every_nth_px", 2);
+  every_nth_px_ = this->declare_parameter<int>("every_nth_px", 4);
   low_pass_freq_ = this->declare_parameter<int>("low_pass_freq", 40.0);
   RCLCPP_INFO(get_logger(), "stored setup params");
 
@@ -269,13 +269,6 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
     int64_t ret = event_packed_compression::convert_polarity_events_compressed(
       eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
 
-#ifdef USE_PUB_THREAD
-    {
-      std::unique_lock<std::mutex> lock(pubMutex_);
-      pubQueue_.push(std::move(eventMsg_));
-      pubCv_.notify_all();
-    }
-#else
     if (ret <= 0) {  // invalid timestamp
       RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
       if (eventMsg_) {
@@ -288,10 +281,17 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
         events.size() > max_events_) {  // publish
         lastMsgEndTime_ = store.getHighestTime();
         reserveSize_ = std::max(reserveSize_, events.size());
+#ifdef USE_PUB_THREAD
+        {
+          std::unique_lock<std::mutex> lock(pubMutex_);
+          pubQueue_.push(std::move(eventMsg_));
+          pubCv_.notify_all();
+        }
+#else
         compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+#endif
       }
     }
-#endif
     // lastMessageTime_ = t;
   } else {
     if (eventMsg_) {
