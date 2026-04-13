@@ -19,7 +19,7 @@
 
 // #define OFFLINE_TESTING
 // #define LIVE_VISUALIZATION
-#define USE_PUB_THREAD
+// #define USE_PUB_THREAD
 
 // IMPORTANT FOR VISUALIZATION
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node

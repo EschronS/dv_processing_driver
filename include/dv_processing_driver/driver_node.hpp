@@ -19,7 +19,7 @@
 #include "dv-processing/core/filters.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-#define USE_PUB_THREAD
+// #define USE_PUB_THREAD
 
 class EventCameraNode : public rclcpp::Node
 {
