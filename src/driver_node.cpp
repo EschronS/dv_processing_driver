@@ -34,7 +34,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   max_events_ = this->declare_parameter<int>("max_events", 3000);
   max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 4);
-  low_pass_freq_ = this->declare_parameter<int>("low_pass_freq", 40.0);
+  low_pass_freq_ = this->declare_parameter<float>("low_pass_freq", 40.0);
   RCLCPP_INFO(get_logger(), "stored setup params");
 
   // publishers
