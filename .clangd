@@ -1,2 +1,4 @@
 CompileFlags:
-  CompilationDatabase: compile_commands.json
+  # CompilationDatabase: compile_commands.json
+  Add:
+    - -I/home/erik/voi_ws/build/dv_processing_driver
