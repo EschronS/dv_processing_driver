@@ -18,7 +18,11 @@
 
 #include <bitset>
 #include <cstdint>
+#ifdef MICRO
 #include <dv-processing/io/camera/dvxplorer_m.hpp>
+#else
+#include <dv-processing/io/camera/dvxplorer.hpp>
+#endif
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 #include <vector>

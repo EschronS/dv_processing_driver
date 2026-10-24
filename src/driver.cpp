@@ -5,9 +5,15 @@
 #include <thread>
 
 #include "dv-processing/data/imu_base.hpp"
-#include "dv-processing/io/camera/dvxplorer_m.hpp"
 
-#define OFFLINE_TESTING
+#undef MICRO
+#ifdef MICRO
+#include "dv-processing/io/camera/dvxplorer_m.hpp"
+#else
+#include "dv-processing/io/camera/dvxplorer.hpp"
+#endif
+
+// #define OFFLINE_TESTING
 
 using namespace std::chrono_literals;
 constexpr size_t MAX_EVENTS = 25000;
@@ -43,7 +49,12 @@ int main()
 
 #endif
 #ifndef OFFLINE_TESTING
+
+#ifdef MICRO
   auto camera = dv::io::camera::DVXplorerM();
+#else
+  auto camera = dv::io::camera::DVXplorer();
+#endif
 
   while (camera.isRunning()) {
     // Handle events
