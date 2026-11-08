@@ -20,6 +20,56 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Apply local patches to the vendored dv-processing submodule.
+set(DV_PROCESSING_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dv-processing")
+set(DV_PROCESSING_EVENT_RINGBUFFER_PATCH
+  "${CMAKE_CURRENT_SOURCE_DIR}/patches/dv-processing-event-ringbuffer.patch")
+
+if(NOT EXISTS "${DV_PROCESSING_SOURCE_DIR}/include/dv-processing/io/camera/camera_input_base.hpp")
+  message(FATAL_ERROR
+    "dv-processing submodule is missing. Run: git submodule update --init --recursive")
+endif()
+
+find_package(Git QUIET)
+if(NOT Git_FOUND)
+  message(FATAL_ERROR "git is required to apply the vendored dv-processing patch")
+endif()
+
+execute_process(
+  COMMAND "${GIT_EXECUTABLE}" -C "${DV_PROCESSING_SOURCE_DIR}" apply --check
+          "${DV_PROCESSING_EVENT_RINGBUFFER_PATCH}"
+  RESULT_VARIABLE DV_PATCH_CHECK_RESULT
+  OUTPUT_QUIET
+  ERROR_QUIET)
+
+if(DV_PATCH_CHECK_RESULT EQUAL 0)
+  message(STATUS "Applying dv-processing event ring-buffer patch")
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${DV_PROCESSING_SOURCE_DIR}" apply
+            "${DV_PROCESSING_EVENT_RINGBUFFER_PATCH}"
+    RESULT_VARIABLE DV_PATCH_APPLY_RESULT
+    ERROR_VARIABLE DV_PATCH_APPLY_ERROR)
+  if(NOT DV_PATCH_APPLY_RESULT EQUAL 0)
+    message(FATAL_ERROR
+      "Failed to apply ${DV_PROCESSING_EVENT_RINGBUFFER_PATCH}: ${DV_PATCH_APPLY_ERROR}")
+  endif()
+else()
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${DV_PROCESSING_SOURCE_DIR}" apply --reverse --check
+            "${DV_PROCESSING_EVENT_RINGBUFFER_PATCH}"
+    RESULT_VARIABLE DV_PATCH_REVERSE_CHECK_RESULT
+    OUTPUT_QUIET
+    ERROR_QUIET)
+  if(DV_PATCH_REVERSE_CHECK_RESULT EQUAL 0)
+    message(STATUS "dv-processing event ring-buffer patch already applied")
+  else()
+    message(FATAL_ERROR
+      "Could not apply ${DV_PROCESSING_EVENT_RINGBUFFER_PATCH}. "
+      "The vendored dv-processing source may have changed; update the patch or reset the submodule "
+      "with: git -C thirdparty/dv-processing checkout -- include/dv-processing/io/camera/camera_input_base.hpp")
+  endif()
+endif()
+
 # Add dv-processing as submodule
 add_subdirectory(thirdparty/dv-processing EXCLUDE_FROM_ALL)
 
