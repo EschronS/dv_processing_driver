@@ -12,7 +12,9 @@
 #include <rclcpp/rate.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
+#include <stdexcept>
 #include <thread>
+#include <variant>
 
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
@@ -29,13 +31,17 @@ using namespace std::chrono_literals;
 EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 {
   //params
-  // auto slice_ms = this->declare_parameter<int>("slice_period_ms", 5);
-  // slice_period_ = std::chrono::milliseconds(slice_ms);
+  const auto publish_period_ms = this->declare_parameter<int>("publish_period_ms", 10);
+  if (publish_period_ms <= 0) {
+    throw std::invalid_argument("publish_period_ms must be greater than zero");
+  }
+  publish_period_ = std::chrono::milliseconds(publish_period_ms);
   max_events_ = this->declare_parameter<int>("max_events", 3000);
-  max_msg_duration_ = this->declare_parameter<int>("max_msg_duration", 1000000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 4);
   low_pass_freq_ = this->declare_parameter<float>("low_pass_freq", 40.0);
-  RCLCPP_INFO(get_logger(), "stored setup params");
+  RCLCPP_INFO(
+    get_logger(), "stored setup params (publish_period_ms=%ld)",
+    static_cast<long>(publish_period_ms));
 
   // publishers
   rclcpp::QoS qos_event(rclcpp::KeepLast(1));
@@ -56,7 +62,7 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   RCLCPP_INFO(get_logger(), "initialized publishers");
 
   // slicers
-  event_slicer_.doEveryNumberOfElements(1000ULL, [&](const dv::EventStore & store) {
+  event_slicer_.doEveryTimeInterval(publish_period_, [&](const dv::EventStore & store) {
     if (store.size() > max_events_) {
       RCLCPP_WARN(
         get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
@@ -64,7 +70,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     // publishEvents(store);  // check real runtime of callback
     publishCompEvents(store);
   });
-  RCLCPP_INFO(get_logger(), "initialized event slicer");
+  RCLCPP_INFO(
+    get_logger(), "initialized event slicer (publish every %ld ms)",
+    static_cast<long>(publish_period_.count()));
 
   imu_slicer_.doEveryNumberOfElements(1, [&](const dv::IMUPacket & imus) { publishImu(imus); });
   RCLCPP_INFO(get_logger(), "initialized imu slicer");
@@ -86,10 +94,10 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     throw std::runtime_error("Camera not initialized");
   }
   // ini filters
-  lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore> >(
+  lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
     *camera_->getEventResolution(), low_pass_freq_);
   createMask(every_nth_px_, *camera_->getEventResolution());
-  em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore> >(mask_);
+  em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore>>(mask_);
   RCLCPP_INFO(get_logger(), "initialized the events filters");
   startCameraThread();
   RCLCPP_INFO(get_logger(), "started camera thread");
@@ -275,22 +283,16 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
         eventMsg_.reset();  // delete currently constr. eventMsg
       }
     } else {
-      const auto & events = eventMsg_->events;
-      if (
-        store.getHighestTime() - lastMsgEndTime_ > max_msg_duration_ ||
-        events.size() > max_events_) {  // publish
-        lastMsgEndTime_ = store.getHighestTime();
-        reserveSize_ = std::max(reserveSize_, events.size());
+      reserveSize_ = std::max(reserveSize_, eventMsg_->events.size());
 #ifdef USE_PUB_THREAD
-        {
-          std::unique_lock<std::mutex> lock(pubMutex_);
-          pubQueue_.push(std::move(eventMsg_));
-          pubCv_.notify_all();
-        }
-#else
-        compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
-#endif
+      {
+        std::unique_lock<std::mutex> lock(pubMutex_);
+        pubQueue_.push(std::move(eventMsg_));
+        pubCv_.notify_all();
       }
+#else
+      compressed_event_pub_->publish(std::move(eventMsg_));  // will reset the pointer
+#endif
     }
     // lastMessageTime_ = t;
   } else {
@@ -339,24 +341,50 @@ void EventCameraNode::startCamera()
     RCLCPP_FATAL(get_logger(), "Camera not initialized!");
     throw std::runtime_error("Camera not initialized");
   }
+  camera_->setTimeInterval(publish_period_);
+  RCLCPP_INFO(
+    get_logger(), "camera data commit interval set to %ld ms",
+    static_cast<long>(publish_period_.count()));
 }
 
 void EventCameraNode::startCameraThread()
 {
   thread_ = std::thread([&]() {
     while (rclcpp::ok() && camera_->isRunning()) {
-      if (auto events = camera_->getNextEventBatch(); events.has_value()) {
-        lp_filter_->accept(*events);
-        const dv::EventStore freq_filtered = lp_filter_->generateEvents();
-        em_filter_->accept(freq_filtered);
-        const dv::EventStore mask_filtered = em_filter_->generateEvents();
+      bool processed_data = false;
+
+      // Drain every packet currently queued. This prevents the camera ring
+      // buffer from filling up when one iteration is slower than the producer.
+      while (rclcpp::ok() && camera_->isRunning()) {
+        auto packet = camera_->readNext();
+
+        if (auto events = std::get_if<dv::EventStore>(&packet)) {
+          lp_filter_->accept(*events);
+          const dv::EventStore freq_filtered = lp_filter_->generateEvents();
+          em_filter_->accept(freq_filtered);
+          const dv::EventStore mask_filtered = em_filter_->generateEvents();
 #ifdef LIVE_VISUALIZATION
-        accumulator_.accept(mask_filtered);
+          accumulator_.accept(mask_filtered);
 #endif
-        event_slicer_.accept(mask_filtered);
+          event_slicer_.accept(mask_filtered);
+          processed_data = true;
+        } else if (auto imus = std::get_if<std::vector<dv::IMU>>(&packet)) {
+          imu_slicer_.accept(*imus);
+          processed_data = true;
+        } else if (
+          std::holds_alternative<dv::Frame>(packet) ||
+          std::holds_alternative<std::vector<dv::Trigger>>(packet)) {
+          // Frames/triggers are not published by this node, but still count as
+          // drained data so we don't sleep while packets remain queued.
+          processed_data = true;
+        } else {
+          // CONTINUE (queue empty) or END_OF_FILE.
+          break;
+        }
       }
-      if (auto imus = camera_->getNextImuBatch(); imus.has_value()) {
-        imu_slicer_.accept(*imus);
+
+      if (!processed_data) {
+        std::this_thread::sleep_for(1ms);
       }
     }
   });

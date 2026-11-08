@@ -46,9 +46,8 @@ private:
   void createMask(int every_nth_px = 2, cv::Size size = cv::Size(640, 480));
 
   // Member variables
-  std::chrono::milliseconds slice_period_;
+  std::chrono::milliseconds publish_period_;
   size_t max_events_;
-  size_t max_msg_duration_;
   int every_nth_px_;
   float low_pass_freq_;
 
@@ -78,7 +77,6 @@ private:
   void publishCompEvents(const dv::EventStore & store);
   uint64_t seq_{0};
   uint64_t reserveSize_{0};
-  uint64_t lastMsgEndTime_{0};
   int64_t lastValidSliceTime_{0};
   rclcpp::Time rosBaseTime_;
   unsigned long sensorTime_0;

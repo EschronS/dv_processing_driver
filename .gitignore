@@ -2,3 +2,4 @@ build/
 .cache/
 **/.null-ls*
 compile_commands.json
+__pycache__
