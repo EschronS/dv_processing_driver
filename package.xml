@@ -11,8 +11,11 @@
 
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>dvs_msgs</depend>
   <depend>event_camera_msgs</depend>
+  <depend>libopencv-dev</depend>
+  <depend>zlib</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
