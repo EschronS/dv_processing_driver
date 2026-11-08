@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.22)
 project(dv_processing_driver LANGUAGES CXX)
 
 # Compiler settings
@@ -17,7 +17,7 @@ endif()
 
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add dv-processing as submodule
@@ -27,6 +27,7 @@ add_subdirectory(thirdparty/dv-processing EXCLUDE_FROM_ALL)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(event_camera_msgs REQUIRED)
 find_package(dvs_msgs REQUIRED)  # EventArray message
 find_package(OpenCV REQUIRED)
@@ -58,6 +59,7 @@ target_link_libraries(dv_processing_driver_node
 ament_target_dependencies(dv_processing_driver_node
   rclcpp
   sensor_msgs
+  std_msgs
   dvs_msgs
 )
 
