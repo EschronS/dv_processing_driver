@@ -60,6 +60,21 @@ colcon build --packages-select dv_processing_driver
 source install/setup.bash
 ```
 
+### Vendored dv-processing event buffer patch
+The build applies `patches/dv-processing-event-ringbuffer.patch` to the vendored dv-processing source before adding it as a subdirectory. The patch:
+
+- increases only the event ring buffer from the upstream default of 256 packets to 1024 packets,
+- leaves the frame, IMU, and trigger buffers at their upstream defaults,
+- prints a warning to stderr when the event buffer is full.
+
+The patch is applied idempotently during CMake configuration. The submodule working tree will show the patched header as modified; this is expected. The patch itself is tracked in this repository. If you need to reset the submodule manually:
+
+```bash
+git -C thirdparty/dv-processing checkout -- include/dv-processing/io/camera/camera_input_base.hpp
+```
+
+Upstream dv-processing 2.0.4 already provides the protected `SortedPackets<T, BUFFER_SIZE>` template used by this patch, but it does not expose a public runtime buffer-size API yet. The local patch is therefore still required.
+
 ## Use
 ```bash
 ros2 launch dv_processing_driver driver_node.launch.py
