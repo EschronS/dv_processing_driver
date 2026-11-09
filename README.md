@@ -83,7 +83,11 @@ ros2 launch dv_processing_driver driver_node.launch.py
 ### Parameters
 - `publish_period_ms` (default `10`): publish one event message per N milliseconds of event time. The camera parser commit interval is set to the same value.
 - `max_events` (default `3000`): warn when one publish period contains more events than this. It no longer controls the publish cadence.
-- `every_nth_px` (default `4`): event mask downsampling.
+- `every_nth_px` (default `4`): event mask downsampling. With `4`, only even
+  rows/columns are kept, so the ignored odd rows/columns are dropped and the
+  published `width`/`height` and event coordinates are halved (e.g. 640×480 →
+  320×240 for the DVXplorer). With `2`, a checkerboard pattern is kept and the
+  full-resolution coordinates are published.
 - `low_pass_freq` (default `40.0`): low-pass filter cutoff frequency.
 
 ### Timestamps

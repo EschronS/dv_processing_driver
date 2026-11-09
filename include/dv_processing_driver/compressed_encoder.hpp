@@ -107,8 +107,8 @@ static inline void flush_state(
 
 int64_t convert_polarity_events_compressed(
   event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
-  const cv::Mat & mask, int every_nth_px, dv::EventFilterBase<dv::EventStore> * event_filter,
-  uint64_t * sensorTime_0);
+  const cv::Mat & mask, int every_nth_px, int coordinate_divisor,
+  dv::EventFilterBase<dv::EventStore> * event_filter, uint64_t * sensorTime_0);
 
 }  // namespace event_packed_compression
 

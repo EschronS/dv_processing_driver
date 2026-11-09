@@ -17,8 +17,8 @@ namespace event_packed_compression
 // negative timestamp if the store has no valid base time.
 int64_t convert_polarity_events_compressed(
   event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
-  const cv::Mat & mask, int every_nth_px, dv::EventFilterBase<dv::EventStore> * event_filter,
-  uint64_t * sensorTime_0)
+  const cv::Mat & mask, int every_nth_px, int coordinate_divisor,
+  dv::EventFilterBase<dv::EventStore> * event_filter, uint64_t * sensorTime_0)
 {
   if (store.isEmpty()) {
     return 0;
@@ -69,11 +69,15 @@ int64_t convert_polarity_events_compressed(
   // where no camera resolution is available).
   const bool use_mask = every_nth_px > 1 && !mask.empty();
   const bool use_filter = event_filter != nullptr;
+  // For every_nth_px == 4 the mask keeps only even x/y, so the ignored rows
+  // and columns can be dropped by encoding half-resolution coordinates.
+  const int divisor = (coordinate_divisor > 0) ? coordinate_divisor : 1;
 
   int64_t retained = 0;
   for (const auto & e : store) {
     // Apply the (static) mask before the low-pass filter so that masked-out
-    // events do not update the filter's time surface.
+    // events do not update the filter's time surface. Both use the original
+    // sensor coordinates.
     if (use_mask && !mask.at<uint8_t>(e.y(), e.x())) {
       continue;
     }
@@ -82,6 +86,10 @@ int64_t convert_polarity_events_compressed(
       continue;
     }
     ++retained;
+
+    // Coordinates written to the message are reduced to the output resolution.
+    const uint16_t x = static_cast<uint16_t>(e.x() / divisor);
+    const uint16_t y = static_cast<uint16_t>(e.y() / divisor);
 
     const uint64_t dt = e.timestamp() - *sensorTime_0;
 
@@ -97,9 +105,9 @@ int64_t convert_polarity_events_compressed(
       add_to_events(&events, TimeLow(static_cast<uint16_t>(timeLow)));
     }
 
-    if (e.x() != currentX) {
+    if (x != currentX) {
       flush_state(&events, &currentMask, currentY, currentYHigh, currentPolarity);
-      currentX = e.x();
+      currentX = x;
       add_to_events(&events, AddrX(currentX));
     }
 
@@ -108,7 +116,6 @@ int64_t convert_polarity_events_compressed(
       currentPolarity = e.polarity();
     }
 
-    const uint16_t y = e.y();
     const uint16_t y_high = y & Y_HIGH_MASK;
     const uint16_t y_low = y & Y_LOW_MASK;
 

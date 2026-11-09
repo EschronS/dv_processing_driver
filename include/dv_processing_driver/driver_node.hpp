@@ -82,6 +82,9 @@ private:
   // mask filtering
   cv::Mat mask_;
   int dimension_divisor_ = -1;
+  int coordinate_divisor_ = 1;
+  int image_width_ = 640;
+  int image_height_ = 480;
 
   // publishing thread
 #ifdef USE_PUB_THREAD

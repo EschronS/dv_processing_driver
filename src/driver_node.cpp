@@ -208,8 +208,8 @@ void EventCameraNode::publishEvents(const dv::EventStore & store)
   msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
   msg.header.frame_id = "events";
   msg.events.reserve(store.size());
-  msg.height = 480 / dimension_divisor_;
-  msg.width = 640 / dimension_divisor_;
+  msg.height = static_cast<uint32_t>(image_height_ / coordinate_divisor_);
+  msg.width = static_cast<uint32_t>(image_width_ / coordinate_divisor_);
 
   for (const auto & e : store) {
     dvs_msgs::msg::Event ev;
@@ -267,8 +267,8 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       eventMsg_->header.frame_id = "events";
       eventMsg_->encoding = "libcaer_cmp";
       eventMsg_->seq = seq_++;
-      eventMsg_->width = 640ULL;
-      eventMsg_->height = 480ULL;
+      eventMsg_->width = static_cast<uint32_t>(image_width_ / coordinate_divisor_);
+      eventMsg_->height = static_cast<uint32_t>(image_height_ / coordinate_divisor_);
       eventMsg_->is_bigendian = false;
       eventMsg_->events.reserve(reserveSize_);
       // eventMsg_->events.reserve(store.size());  // changed from libcaer logic
@@ -277,7 +277,8 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
     }
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
     const int64_t ret = event_packed_compression::convert_polarity_events_compressed(
-      eventMsg_.get(), store, mask_, every_nth_px_, lp_filter_.get(), &sensorTime_0);
+      eventMsg_.get(), store, mask_, every_nth_px_, coordinate_divisor_, lp_filter_.get(),
+      &sensorTime_0);
 
     if (ret < 0) {  // invalid timestamp
       RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
@@ -441,18 +442,27 @@ void EventCameraNode::createMask(int every_nth_px, cv::Size size)
   RCLCPP_INFO(this->get_logger(), "Mask size requested: %d x %d", size.width, size.height);
   int rows = size.height;
   int cols = size.width;
+  image_width_ = cols;
+  image_height_ = rows;
   assert(rows % 2 == 0 && cols % 2 == 0);
   assert(rows > 0 && cols > 0);
   cv::Mat base;
   if (every_nth_px == 1) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 255, 255, 255);  // mask which lets everything through
     dimension_divisor_ = 1;  // scale down the max cols and rows when publishing
+    coordinate_divisor_ = 1;
   } else if (every_nth_px == 2) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 255);
     dimension_divisor_ = 2;  // scale down the max cols and rows when publishing
+    // Checkerboard mask: every row/column is still used, so keep full-res
+    // coordinates to avoid merging the two kept diagonals.
+    coordinate_divisor_ = 1;
   } else if (every_nth_px == 4) {
     base = (cv::Mat_<uchar>(2, 2) << 255, 0, 0, 0);
     dimension_divisor_ = 2;
+    // Only even rows/columns are kept, so dropping the odd ones halves the
+    // resolution in each dimension.
+    coordinate_divisor_ = 2;
   }
   cv::repeat(base, rows / 2, cols / 2, mask_);  // write resulting mask to mask_ attribute
   assert(dimension_divisor_ > 0);               // unknown every_nth_px value
