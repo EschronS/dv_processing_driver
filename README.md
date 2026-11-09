@@ -1,9 +1,16 @@
 # Simple Driver for DVXplorer (-micro) event camera
 - uses the modern dv-processing lib. from Inivation
 - publishes highly compressed event data in the ROS2 ecosystem
+- supports libcaer_cmp and dvs_msgs event format
 
 # About this Repo
 While working with the DVXplorer-micro event camera I encountered the problem of the firmware deprecating support for libcaer. This made it impossible for me to use awesome ROS2 event-camera [driver-stack](https://github.com/ros-event-camera) from Bernd Pfrommer because of it's dependence on libcaer. This repository here is a minimal ROS2 driver node which uses dv-processing and the compression implementation from Bernd Pfrommer to efficiently publish event data from the DVXplorer-micro under ROS2.
+
+# Roadmap
+- [ ] testing for drops and timestamp-consistency
+- [ ] benchmark performance compared to libcaer_driver and dv-ros
+- [ ] do github-CI to ensure build works with current dv-processing
+- [ ] upstream a setter for msg-buffer size so we don't need the patch
 
 # Other Solutions
 - if your application can use ROS1 the maintained ROS1-driver [dv-ros](https://gitlab.com/inivation/dv/dv-ros) from Inivation is a good alternative
