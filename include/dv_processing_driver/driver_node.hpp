@@ -53,8 +53,8 @@ private:
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
-  std::unique_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
-  std::unique_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
+  std::shared_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
+  std::shared_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
 
   dv::Accumulator accumulator_;
   dv::Frame event_frame_;

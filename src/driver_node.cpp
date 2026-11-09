@@ -16,6 +16,8 @@
 #include <thread>
 #include <variant>
 
+#include "dv-processing/core/core.hpp"
+#include "dv-processing/core/filters.hpp"
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
@@ -94,10 +96,10 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     throw std::runtime_error("Camera not initialized");
   }
   // ini filters
-  lp_filter_ = std::make_unique<dv::noise::LowPassFilter<dv::EventStore>>(
+  lp_filter_ = std::make_shared<dv::noise::LowPassFilter<dv::EventStore>>(
     *camera_->getEventResolution(), low_pass_freq_);
   createMask(every_nth_px_, *camera_->getEventResolution());
-  em_filter_ = std::make_unique<dv::EventMaskFilter<dv::EventStore>>(mask_);
+  em_filter_ = std::make_shared<dv::EventMaskFilter<dv::EventStore>>(mask_);
   RCLCPP_INFO(get_logger(), "initialized the events filters");
   startCameraThread();
   RCLCPP_INFO(get_logger(), "started camera thread");
@@ -359,14 +361,17 @@ void EventCameraNode::startCameraThread()
         auto packet = camera_->readNext();
 
         if (auto events = std::get_if<dv::EventStore>(&packet)) {
-          lp_filter_->accept(*events);
-          const dv::EventStore freq_filtered = lp_filter_->generateEvents();
-          em_filter_->accept(freq_filtered);
-          const dv::EventStore mask_filtered = em_filter_->generateEvents();
+          auto fchain = std::make_shared<dv::EventFilterChain<dv::EventStore>>();
+          if (every_nth_px_ != 1) {
+            fchain->addFilter(em_filter_);
+          }
+          fchain->addFilter(lp_filter_);
+          fchain->accept(*events);
+          const dv::EventStore filtered = fchain->generateEvents();
 #ifdef LIVE_VISUALIZATION
-          accumulator_.accept(mask_filtered);
+          accumulator_.accept(filtered);
 #endif
-          event_slicer_.accept(mask_filtered);
+          event_slicer_.accept(filtered);
           processed_data = true;
         } else if (auto imus = std::get_if<std::vector<dv::IMU>>(&packet)) {
           imu_slicer_.accept(*imus);
