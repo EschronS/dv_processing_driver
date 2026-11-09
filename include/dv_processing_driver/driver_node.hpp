@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
@@ -52,6 +53,7 @@ private:
   size_t max_events_;
   int every_nth_px_;
   float low_pass_freq_;
+  std::string encoding_;
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;

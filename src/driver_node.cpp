@@ -44,9 +44,13 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
     throw std::invalid_argument("every_nth_px must be one of 1, 2 or 4");
   }
   low_pass_freq_ = this->declare_parameter<float>("low_pass_freq", 40.0);
+  encoding_ = this->declare_parameter<std::string>("encoding", "libcaer_cmp");
+  if (encoding_ != "dvs" && encoding_ != "libcaer_cmp") {
+    throw std::invalid_argument("encoding must be one of 'dvs' or 'libcaer_cmp'");
+  }
   RCLCPP_INFO(
-    get_logger(), "stored setup params (publish_period_ms=%ld)",
-    static_cast<long>(publish_period_ms));
+    get_logger(), "stored setup params (publish_period_ms=%ld, encoding=%s)",
+    static_cast<long>(publish_period_ms), encoding_.c_str());
 
   // publishers
   rclcpp::QoS qos_event(rclcpp::KeepLast(1));
@@ -70,10 +74,11 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
       RCLCPP_WARN(
         get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
     }
-    publishEvents(
-      store, mask_, every_nth_px_, coordinate_divisor_,
-      lp_filter_.get());  // check real runtime of callback
-    // publishCompEvents(store);
+    if (encoding_ == "dvs") {
+      publishEvents(store, mask_, every_nth_px_, coordinate_divisor_, lp_filter_.get());
+    } else {
+      publishCompEvents(store);
+    }
   });
   RCLCPP_INFO(
     get_logger(), "initialized event slicer (publish every %ld ms)",
@@ -204,20 +209,21 @@ void EventCameraNode::publishEvents(
   const dv::EventStore & store, const cv::Mat & mask, int every_nth_px, int coordinate_divisor,
   dv::EventFilterBase<dv::EventStore> * event_filter)
 {
-  if (store.isEmpty()) {
+  if (store.isEmpty() || event_pub_->get_subscription_count() == 0) {
     return;
   }
   // Allow the encoder to be used without filtering (e.g. offline simulation
   // where no camera resolution is available).
   const bool use_mask = every_nth_px > 1 && !mask.empty();
   const bool use_filter = event_filter != nullptr;
+  const int divisor = (coordinate_divisor > 0) ? coordinate_divisor : 1;
 
   dvs_msgs::msg::EventArray msg;
-  msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
+  msg.header.stamp = rclcpp::Time(store.getHighestTime() * 1000ULL);  // like dv-ros
   msg.header.frame_id = "events";
   msg.events.reserve(store.size());
-  msg.height = static_cast<uint32_t>(image_height_ / coordinate_divisor_);
-  msg.width = static_cast<uint32_t>(image_width_ / coordinate_divisor_);
+  msg.height = static_cast<uint32_t>(image_height_ / divisor);
+  msg.width = static_cast<uint32_t>(image_width_ / divisor);
 
   for (const auto & e : store) {
     // Apply the (static) mask before the low-pass filter so that masked-out
@@ -231,11 +237,15 @@ void EventCameraNode::publishEvents(
       continue;
     }
     dvs_msgs::msg::Event ev;
-    ev.x = e.x() / coordinate_divisor_;
-    ev.y = e.y() / coordinate_divisor_;
+    ev.x = e.x() / divisor;
+    ev.y = e.y() / divisor;
     ev.polarity = e.polarity();
     ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
     msg.events.push_back(ev);
+  }
+
+  if (msg.events.empty()) {
+    return;
   }
 
   // rclcpp::SerializedMessage serialized_msg;

@@ -80,6 +80,12 @@ Upstream dv-processing 2.0.4 already provides the protected `SortedPackets<T, BU
 ros2 launch dv_processing_driver driver_node.launch.py
 ```
 
+Select the uncompressed `dvs_msgs` publisher with:
+
+```bash
+ros2 launch dv_processing_driver driver_node.launch.py encoding:=dvs
+```
+
 ### Parameters
 - `publish_period_ms` (default `10`): publish one event message per N milliseconds of event time. The camera parser commit interval is set to the same value.
 - `max_events` (default `3000`): warn when one publish period contains more events than this. It no longer controls the publish cadence.
@@ -89,6 +95,11 @@ ros2 launch dv_processing_driver driver_node.launch.py
   320×240 for the DVXplorer). With `2`, a checkerboard pattern is kept and the
   full-resolution coordinates are published.
 - `low_pass_freq` (default `40.0`): low-pass filter cutoff frequency.
+- `encoding` (default `libcaer_cmp`): selects the event publisher.
+  `libcaer_cmp` publishes compressed `event_camera_msgs/EventPacket` messages on
+  `event_camera/events`; `dvs` publishes uncompressed
+  `dvs_msgs/EventArray` messages on `event_camera/events_old`. Both paths apply
+  the same mask and low-pass filtering.
 
 ### Timestamps
 The dv-processing camera parser offsets the device clock to the system clock, so
@@ -115,6 +126,11 @@ Event messages (`event_camera/events`, encoding `libcaer_cmp`):
   wraps every ~16.8 s, which is harmless because every message starts a new
   delta base and normally spans only one publish period.
 
+Uncompressed messages (`event_camera/events_old`, `encoding=dvs`):
+
+- `header.stamp`: sensor time of the last event in the message (µs → ns).
+- Each event's `ts`: absolute sensor time (µs → ns).
+
 IMU messages (`event_camera/imu`):
 
 - `header.stamp`: `dv::IMU::timestamp` (µs since the Unix epoch, µs → ns),
@@ -123,7 +139,7 @@ IMU messages (`event_camera/imu`):
   downstream consumers.
 
 ### Preview
-you can preview the published events with [event_camera_renderer](https://github.com/ros-event-camera/event_camera_renderer/)
+you can preview the published libcaer_cmp compressed events with [event_camera_renderer](https://github.com/ros-event-camera/event_camera_renderer/)
 
 
 ## Credit
