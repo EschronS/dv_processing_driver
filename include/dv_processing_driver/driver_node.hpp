@@ -38,7 +38,9 @@ public:
 
 private:
   // Publishers
-  void publishEvents(const dv::EventStore & store);
+  void publishEvents(
+    const dv::EventStore & store, const cv::Mat & mask, int every_nth_px, int coordinate_divisor,
+    dv::EventFilterBase<dv::EventStore> * event_filter);
   void publishImu(const dv::IMUPacket & packet);
 
   // Utilities

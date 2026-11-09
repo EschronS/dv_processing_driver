@@ -70,8 +70,10 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
       RCLCPP_WARN(
         get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
     }
-    // publishEvents(store);  // check real runtime of callback
-    publishCompEvents(store);
+    publishEvents(
+      store, mask_, every_nth_px_, coordinate_divisor_,
+      lp_filter_.get());  // check real runtime of callback
+    // publishCompEvents(store);
   });
   RCLCPP_INFO(
     get_logger(), "initialized event slicer (publish every %ld ms)",
@@ -198,11 +200,17 @@ EventCameraNode::~EventCameraNode()
 }
 
 // publisher implimentations
-void EventCameraNode::publishEvents(const dv::EventStore & store)
+void EventCameraNode::publishEvents(
+  const dv::EventStore & store, const cv::Mat & mask, int every_nth_px, int coordinate_divisor,
+  dv::EventFilterBase<dv::EventStore> * event_filter)
 {
   if (store.isEmpty()) {
     return;
   }
+  // Allow the encoder to be used without filtering (e.g. offline simulation
+  // where no camera resolution is available).
+  const bool use_mask = every_nth_px > 1 && !mask.empty();
+  const bool use_filter = event_filter != nullptr;
 
   dvs_msgs::msg::EventArray msg;
   msg.header.stamp = rclcpp::Time(store[0].timestamp() * 1000ULL);
@@ -212,9 +220,19 @@ void EventCameraNode::publishEvents(const dv::EventStore & store)
   msg.width = static_cast<uint32_t>(image_width_ / coordinate_divisor_);
 
   for (const auto & e : store) {
+    // Apply the (static) mask before the low-pass filter so that masked-out
+    // events do not update the filter's time surface. Both use the original
+    // sensor coordinates.
+    if (use_mask && !mask.at<uint8_t>(e.y(), e.x())) {
+      continue;
+    }
+    // retain() is stateful and must be called exactly once per candidate event.
+    if (use_filter && !event_filter->retain(e)) {
+      continue;
+    }
     dvs_msgs::msg::Event ev;
-    ev.x = e.x() / dimension_divisor_;
-    ev.y = e.y() / dimension_divisor_;
+    ev.x = e.x() / coordinate_divisor_;
+    ev.y = e.y() / coordinate_divisor_;
     ev.polarity = e.polarity();
     ev.ts = rclcpp::Time(e.timestamp() * 1000ULL);
     msg.events.push_back(ev);
