@@ -71,8 +71,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   // slicers
   event_slicer_.doEveryTimeInterval(publish_period_, [&](const dv::EventStore & store) {
     if (store.size() > max_events_) {
-      RCLCPP_WARN(
-        get_logger(), "Received very many events %d > %d", int(store.size()), int(max_events_));
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000, "Received very many events %d > %d", int(store.size()),
+        int(max_events_));
     }
     if (encoding_ == "dvs") {
       publishEvents(store, mask_, every_nth_px_, coordinate_divisor_, lp_filter_.get());
@@ -272,16 +273,17 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
 
   const int64_t sliceBaseTime = store.getLowestTime();
   if (sliceBaseTime <= 0) {
-    RCLCPP_WARN(get_logger(), "Store has zero/negative base timestamp, dropping slice");
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Store has zero/negative base timestamp, dropping slice");
     if (eventMsg_) {
       eventMsg_.reset();  // delete currently constr. eventMsg
     }
     return;
   }
   if (sliceBaseTime < lastValidSliceTime_) {
-    RCLCPP_WARN(
-      get_logger(), "Timestamp regression detected: %ld < %ld, dropping slice", sliceBaseTime,
-      lastValidSliceTime_);
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Timestamp regression detected: %ld < %ld, dropping slice",
+      sliceBaseTime, lastValidSliceTime_);
     if (eventMsg_) {
       eventMsg_.reset();  // delete currently constr. eventMsg
     }
@@ -309,7 +311,8 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       &sensorTime_0);
 
     if (ret < 0) {  // invalid timestamp
-      RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000, "Invalid timestamp %ld, skipping", ret);
       if (eventMsg_) {
         eventMsg_.reset();  // delete currently constr. eventMsg
       }
@@ -457,7 +460,7 @@ std::vector<uint8_t> EventCameraNode::compressBuffer(const uint8_t * data, size_
   std::vector<uint8_t> output(compressedSize);
 
   if (compress2(output.data(), &compressedSize, data, size, Z_BEST_SPEED) != Z_OK) {
-    RCLCPP_ERROR(this->get_logger(), "Compression failed!");
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Compression failed!");
     return {};
   }
 

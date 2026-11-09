@@ -65,7 +65,8 @@ The build applies `patches/dv-processing-event-ringbuffer.patch` to the vendored
 
 - increases only the event ring buffer from the upstream default of 256 packets to 1024 packets,
 - leaves the frame, IMU, and trigger buffers at their upstream defaults,
-- prints a warning to stderr when the event buffer is full.
+- prints a warning to stderr (throttled to at most once per second) when the
+  event buffer is full.
 
 The patch is applied idempotently during CMake configuration. The submodule working tree will show the patched header as modified; this is expected. The patch itself is tracked in this repository. If you need to reset the submodule manually:
 

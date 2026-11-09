@@ -1,5 +1,6 @@
 #include <time.h>
 
+#include <chrono>
 #include <dv-processing/core/core.hpp>
 #include <dv-processing/data/generate.hpp>
 #include <thread>
@@ -30,12 +31,23 @@ int main()
   // dv::EventStore buffer;
 
   event_slicer.doEveryTimeInterval(SLICE_PERIOD, [](const dv::EventStore & events) {
-    std::cout << "* Received events time-based slicing: " << events << std::endl;
+    static auto lastLog = std::chrono::steady_clock::time_point{};
+    const auto now     = std::chrono::steady_clock::now();
+    if (now - lastLog >= std::chrono::seconds(1)) {
+      lastLog = now;
+      std::cout << "* Received events time-based slicing: " << events << std::endl;
+    }
     numberOfEvents += events.size();
   });
 
-  imu_slicer.doEveryNumberOfElements(
-    1, [](const dv::IMUPacket & imus) { std::cout << "* Received IMU: " << imus << std::endl; });
+  imu_slicer.doEveryNumberOfElements(1, [](const dv::IMUPacket & imus) {
+    static auto lastLog = std::chrono::steady_clock::time_point{};
+    const auto now     = std::chrono::steady_clock::now();
+    if (now - lastLog >= std::chrono::seconds(1)) {
+      lastLog = now;
+      std::cout << "* Received IMU: " << imus << std::endl;
+    }
+  });
 
 #ifdef OFFLINE_TESTING
   for (int i = 0; i < 1000; i++) {

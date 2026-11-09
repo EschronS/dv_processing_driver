@@ -1,33 +1,43 @@
 diff --git a/include/dv-processing/io/camera/camera_input_base.hpp b/include/dv-processing/io/camera/camera_input_base.hpp
-index c5f279df..d73231b9 100644
+index c5f279df..7586139a 100644
 --- a/include/dv-processing/io/camera/camera_input_base.hpp
 +++ b/include/dv-processing/io/camera/camera_input_base.hpp
-@@ -5,6 +5,8 @@
+@@ -5,6 +5,9 @@
  #include "imu_support.hpp"
  #include "parsers/parser.hpp"
  
++#include <chrono>
 +#include <cstdio>
 +
  #include <boost/circular_buffer.hpp>
  
  namespace dv::io::camera {
-@@ -294,7 +296,7 @@ protected:
+@@ -293,8 +296,9 @@ protected:
+ 		mutable std::mutex mDataLock{};
  
  		uint64_t mPacketCount{0};
++		std::chrono::steady_clock::time_point mLastBufferFullWarn{};
  
 -		SortedPackets<dv::EventPacket> mEvents{};
 +		SortedPackets<dv::EventPacket, 1024> mEvents{};
  		SortedPackets<dv::Frame> mFrames{};
  		SortedPackets<dv::IMUPacket> mImu{};
  		SortedPackets<dv::TriggerPacket> mTriggers{};
-@@ -303,6 +305,11 @@ protected:
+@@ -303,6 +307,18 @@ protected:
  			std::scoped_lock lock{mDataLock};
  
  			if (!data.events.elements.empty()) {
 +				if (mEvents.mData.full()) {
-+					fprintf(stderr,
-+						"[dv] EVENT BUFFER FULL cap=%zu, overwriting oldest packet (incoming %zu events)\n",
-+						mEvents.mData.capacity(), data.events.elements.size());
++					// Throttle this to at most once per second: it runs on every
++					// incoming packet while the ring buffer is full.
++					const auto now = std::chrono::steady_clock::now();
++					if (now - mLastBufferFullWarn >= std::chrono::seconds(1)) {
++						mLastBufferFullWarn = now;
++						fprintf(stderr,
++							"[dv] EVENT BUFFER FULL cap=%zu, overwriting oldest packet (incoming %zu "
++							"events)\n",
++							mEvents.mData.capacity(), data.events.elements.size());
++					}
 +				}
  				mEvents.mData.push_back(std::make_pair(mPacketCount++, std::move(data.events)));
  			}
