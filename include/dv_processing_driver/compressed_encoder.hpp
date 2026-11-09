@@ -23,11 +23,13 @@
 #else
 #include <dv-processing/io/camera/dvxplorer.hpp>
 #endif
+#include <opencv2/core.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 #include <vector>
 
 #include "dv-processing/core/core.hpp"
+#include "dv-processing/core/filters.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
 namespace event_packed_compression
@@ -103,9 +105,10 @@ static inline void flush_state(
   }
 }
 
-size_t convert_polarity_events_compressed(
+int64_t convert_polarity_events_compressed(
   event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
-  const rclcpp::Time & baseTime, uint64_t * sensorTime_0);
+  const cv::Mat & mask, int every_nth_px, dv::EventFilterBase<dv::EventStore> * event_filter,
+  uint64_t * sensorTime_0);
 
 }  // namespace event_packed_compression
 

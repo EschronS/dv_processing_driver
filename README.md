@@ -86,6 +86,38 @@ ros2 launch dv_processing_driver driver_node.launch.py
 - `every_nth_px` (default `4`): event mask downsampling.
 - `low_pass_freq` (default `40.0`): low-pass filter cutoff frequency.
 
+### Timestamps
+The dv-processing camera parser offsets the device clock to the system clock, so
+sensor timestamps are microseconds since the Unix epoch. The driver converts
+them to nanoseconds for ROS.
+
+Event messages (`event_camera/events`, encoding `libcaer_cmp`):
+
+- `header.stamp`: ROS/system clock time in ns sampled when the message is
+  encoded (publication time), stamped as `RCL_SYSTEM_TIME`.
+- `time_base`: sensor time of the first event in the message
+  (`store.getLowestTime()`, µs → ns). This is the absolute base used by the
+  `libcaer_cmp` decoder:
+  `decoded_event_time = time_base + (event_sensor_time - first_event_sensor_time)`.
+  Since the camera parser maps sensor time onto the Unix epoch, decoded event
+  timestamps are absolute sensor times in ns.
+- Event timestamps inside `events`: not stored absolutely. Each event is encoded
+  as a delta from the first event of the same message (`sensorTime_0`):
+  `dt = event_timestamp - sensorTime_0` in µs. The stream carries `dt` as two
+  12-bit fields, `TimeHigh` (bits 12–23) and `TimeLow` (bits 0–11); the first
+  event in the store has `dt = 0` (the first retained event may have `dt > 0` if
+  filtering removed earlier events). A decoder reconstructs the absolute sensor
+  time as `(TimeHigh << 12 | TimeLow) * 1000 + time_base` ns. The 24-bit delta
+  wraps every ~16.8 s, which is harmless because every message starts a new
+  delta base and normally spans only one publish period.
+
+IMU messages (`event_camera/imu`):
+
+- `header.stamp`: `dv::IMU::timestamp` (µs since the Unix epoch, µs → ns),
+  stamped as `RCL_SYSTEM_TIME`. If the resulting stamp is not greater than the
+  previous IMU stamp, 1 ms is added to keep the stamps strictly monotonic for
+  downstream consumers.
+
 ### Preview
 you can preview the published events with [event_camera_renderer](https://github.com/ros-event-camera/event_camera_renderer/)
 

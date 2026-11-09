@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 project(dv_processing_driver LANGUAGES CXX)
 
+# Default to an optimized build. Without this, a plain `colcon build` leaves
+# CMAKE_BUILD_TYPE empty, which disables -O2/-O3 and NDEBUG (dv-processing then
+# keeps its per-event runtime bounds checks enabled).
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 # Compiler settings
 # if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 #   add_compile_options(-Wall -Wextra -Wpedantic)

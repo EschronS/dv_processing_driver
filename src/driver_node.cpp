@@ -40,6 +40,9 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   publish_period_ = std::chrono::milliseconds(publish_period_ms);
   max_events_ = this->declare_parameter<int>("max_events", 3000);
   every_nth_px_ = this->declare_parameter<int>("every_nth_px", 4);
+  if (every_nth_px_ != 1 && every_nth_px_ != 2 && every_nth_px_ != 4) {
+    throw std::invalid_argument("every_nth_px must be one of 1, 2 or 4");
+  }
   low_pass_freq_ = this->declare_parameter<float>("low_pass_freq", 40.0);
   RCLCPP_INFO(
     get_logger(), "stored setup params (publish_period_ms=%ld)",
@@ -56,8 +59,6 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("event_camera/imu", qos_imu);
   last_timestamp = 0;
   static_assert(std::endian::native == std::endian::little);
-  rosBaseTime_ =  // time on recording start (ros time)
-    rclcpp::Time((this->get_clock()->now().nanoseconds() / 1000ULL) * 1000ULL, RCL_SYSTEM_TIME);
 
   compressed_event_pub_ =
     create_publisher<event_camera_msgs::msg::EventPacket>("event_camera/events", qos_event);
@@ -99,7 +100,6 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   lp_filter_ = std::make_shared<dv::noise::LowPassFilter<dv::EventStore>>(
     *camera_->getEventResolution(), low_pass_freq_);
   createMask(every_nth_px_, *camera_->getEventResolution());
-  em_filter_ = std::make_shared<dv::EventMaskFilter<dv::EventStore>>(mask_);
   RCLCPP_INFO(get_logger(), "initialized the events filters");
   startCameraThread();
   RCLCPP_INFO(get_logger(), "started camera thread");
@@ -276,13 +276,17 @@ void EventCameraNode::publishCompEvents(const dv::EventStore & store)
       // we can do this becuase we always publish the whole event store immediately
     }
     static_assert(std::is_same_v<decltype(sensorTime_0), uint64_t>);
-    int64_t ret = event_packed_compression::convert_polarity_events_compressed(
-      eventMsg_.get(), store, rosBaseTime_, &sensorTime_0);
+    const int64_t ret = event_packed_compression::convert_polarity_events_compressed(
+      eventMsg_.get(), store, mask_, every_nth_px_, lp_filter_.get(), &sensorTime_0);
 
-    if (ret <= 0) {  // invalid timestamp
+    if (ret < 0) {  // invalid timestamp
       RCLCPP_WARN(this->get_logger(), "Invalid timestamp %ld, skipping", ret);
       if (eventMsg_) {
         eventMsg_.reset();  // delete currently constr. eventMsg
+      }
+    } else if (ret == 0) {  // nothing retained by mask/low-pass filter
+      if (eventMsg_) {
+        eventMsg_.reset();
       }
     } else {
       reserveSize_ = std::max(reserveSize_, eventMsg_->events.size());
@@ -361,17 +365,12 @@ void EventCameraNode::startCameraThread()
         auto packet = camera_->readNext();
 
         if (auto events = std::get_if<dv::EventStore>(&packet)) {
-          auto fchain = std::make_shared<dv::EventFilterChain<dv::EventStore>>();
-          if (every_nth_px_ != 1) {
-            fchain->addFilter(em_filter_);
-          }
-          fchain->addFilter(lp_filter_);
-          fchain->accept(*events);
-          const dv::EventStore filtered = fchain->generateEvents();
+          // Mask + low-pass filtering and compression happen in a single pass
+          // inside publishCompEvents(), so pass the raw events to the slicer.
 #ifdef LIVE_VISUALIZATION
-          accumulator_.accept(filtered);
+          accumulator_.accept(*events);
 #endif
-          event_slicer_.accept(filtered);
+          event_slicer_.accept(*events);
           processed_data = true;
         } else if (auto imus = std::get_if<std::vector<dv::IMU>>(&packet)) {
           imu_slicer_.accept(*imus);

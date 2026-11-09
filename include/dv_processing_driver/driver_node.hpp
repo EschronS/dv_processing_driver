@@ -54,7 +54,6 @@ private:
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
   std::shared_ptr<dv::noise::LowPassFilter<dv::EventStore>> lp_filter_;
-  std::shared_ptr<dv::EventMaskFilter<dv::EventStore>> em_filter_;
 
   dv::Accumulator accumulator_;
   dv::Frame event_frame_;
@@ -78,8 +77,7 @@ private:
   uint64_t seq_{0};
   uint64_t reserveSize_{0};
   int64_t lastValidSliceTime_{0};
-  rclcpp::Time rosBaseTime_;
-  unsigned long sensorTime_0;
+  uint64_t sensorTime_0{0};
 
   // mask filtering
   cv::Mat mask_;

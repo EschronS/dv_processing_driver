@@ -1,18 +1,24 @@
 #include "dv_processing_driver/compressed_encoder.hpp"
 
-#include <cstddef>  // size_t
+#include <chrono>
+#include <cstdint>
 #include <dv-processing/core/core.hpp>
+#include <dv-processing/core/filters.hpp>
 #include <event_camera_msgs/msg/event_packet.hpp>
+#include <limits>
+#include <opencv2/core.hpp>
 #include <rclcpp/time.hpp>
-
-#include "event_camera_msgs/msg/event_packet.hpp"
 
 namespace event_packed_compression
 {
 
-size_t convert_polarity_events_compressed(
+// Filters (mask + low-pass) and encodes the events in a single pass. Returns
+// the number of retained/encoded events, 0 if nothing was retained, or a
+// negative timestamp if the store has no valid base time.
+int64_t convert_polarity_events_compressed(
   event_camera_msgs::msg::EventPacket_<std::allocator<void> > * msg, const dv::EventStore & store,
-  const rclcpp::Time & baseTime, uint64_t * sensorTime_0)
+  const cv::Mat & mask, int every_nth_px, dv::EventFilterBase<dv::EventStore> * event_filter,
+  uint64_t * sensorTime_0)
 {
   if (store.isEmpty()) {
     return 0;
@@ -24,44 +30,59 @@ size_t convert_polarity_events_compressed(
   constexpr uint16_t Y_LOW_MASK = 0x0007;        // lowest 3 bits
   constexpr uint16_t Y_HIGH_MASK = ~Y_LOW_MASK;  // highest 13 bits
 
-  const auto & first = store.front();
-  // const uint64_t sensorPacketTime = first.timestamp();
   // timestamp of the first event in the event-packet
   const int64_t sensorPacketTime = store.getLowestTime();
   if (sensorPacketTime <= 0) {
     return sensorPacketTime;
   }
-
   const uint64_t sensorPacketTimeU = static_cast<uint64_t>(sensorPacketTime);
 
-  // do this always because we publish in fixed time intervall
-  // msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
-  // *sensorTime_0 = sensorPacketTimeU;
-
+  // Exactly one EventStore per message: always start from a clean message.
   auto & events = msg->events;
-  if (events.empty()) {  // the first packet for this msg
-    msg->header.stamp = rclcpp::Time(sensorPacketTimeU * 1000ULL, RCL_SYSTEM_TIME);
-    *sensorTime_0 = sensorPacketTimeU;  // start time of the first event in the first packet
-    // in contrast to libcaer_driver, we use ROS-time in timebase field
-    uint64_t t =
-      duration_cast<rclcpp::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
-        .count();
-    msg->time_base = t;  // system time = ros time (taken from libcaer_driver)
-  }
+  events.clear();
+
+  // ROS time at which this message is produced. This is the message stamp;
+  // the event timestamps themselves are reconstructed from time_base below.
+  const uint64_t nowNs = static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::system_clock::now().time_since_epoch())
+      .count());
+  msg->header.stamp = rclcpp::Time(nowNs, RCL_SYSTEM_TIME);
+
+  *sensorTime_0 = sensorPacketTimeU;  // start time of the first event in the packet
+  // The libcaer_cmp decoder reconstructs absolute event times from time_base,
+  // so it must be the sensor time of the first event in this message (µs -> ns).
+  msg->time_base = sensorPacketTimeU * 1000ULL;
 
   const uint64_t dt_0 = sensorPacketTimeU - *sensorTime_0;
-  uint16_t timeHigh = dt_0 & TIME_HIGH_MASK;
+  uint64_t timeHigh = dt_0 & TIME_HIGH_MASK;
   uint64_t timeLow = dt_0 & TIME_LOW_MASK;
 
-  uint16_t currentX = first.x();
-  add_to_events(&events, AddrX(currentX));
-
+  // Sentinel so that the first retained event always emits an AddrX token.
+  uint16_t currentX = std::numeric_limits<uint16_t>::max();
   uint16_t currentY = std::numeric_limits<uint16_t>::max();
   uint16_t currentYHigh = currentY & Y_HIGH_MASK;
   std::bitset<8> currentMask(0);
   uint8_t currentPolarity = 2;
 
+  // Allow the encoder to be used without filtering (e.g. offline simulation
+  // where no camera resolution is available).
+  const bool use_mask = every_nth_px > 1 && !mask.empty();
+  const bool use_filter = event_filter != nullptr;
+
+  int64_t retained = 0;
   for (const auto & e : store) {
+    // Apply the (static) mask before the low-pass filter so that masked-out
+    // events do not update the filter's time surface.
+    if (use_mask && !mask.at<uint8_t>(e.y(), e.x())) {
+      continue;
+    }
+    // retain() is stateful and must be called exactly once per candidate event.
+    if (use_filter && !event_filter->retain(e)) {
+      continue;
+    }
+    ++retained;
+
     const uint64_t dt = e.timestamp() - *sensorTime_0;
 
     if ((dt & TIME_HIGH_MASK) != timeHigh) {
@@ -101,6 +122,6 @@ size_t convert_polarity_events_compressed(
   }
 
   flush_state(&events, &currentMask, currentY, currentYHigh, currentPolarity);
-  return store.size();
+  return retained;
 }
 }  // namespace event_packed_compression
