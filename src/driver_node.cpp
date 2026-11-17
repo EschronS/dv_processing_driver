@@ -12,6 +12,7 @@
 #include <rclcpp/rate.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
+#include <rclcpp/utilities.hpp>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -24,8 +25,8 @@
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
-// #define OFFLINE_TESTING
-// #define LIVE_VISUALIZATION
+#define OFFLINE_TESTING
+#define LIVE_VISUALIZATION
 // #define USE_PUB_THREAD
 
 // IMPORTANT FOR VISUALIZATION
@@ -210,17 +211,11 @@ EventCameraNode::~EventCameraNode()
   }
   RCLCPP_WARN(get_logger(), "publishing thread destroyed proprely!");
 #endif
-  // #ifdef OFFLINE_TESTING
-  //   keepSimulationThreadRunning_.store(false);
-  //   if (simulationThread_.joinable()) {
-  //     simulationThread_.join();
-  //   }
-  // #else
-  //   keepCameraThreadRunning_.store(false);
-  //   if (cameraThread_.joinable()) {
-  //     cameraThread_.join();
-  //   }
-  // #endif
+  // The simulation/camera thread captures `this`; it must be joined before the
+  // node members are destroyed, otherwise shutdown can use freed memory.
+  if (thread_.joinable()) {
+    thread_.join();
+  }
 }
 
 // publisher implimentations
@@ -442,7 +437,6 @@ void EventCameraNode::startCameraThread()
       }
     }
   });
-  thread_.detach();
 }
 
 #else
@@ -455,7 +449,7 @@ void EventCameraNode::startSimulation()
     // .count();
     const auto period = std::chrono::milliseconds(1);
     auto next_time = std::chrono::steady_clock::now();
-    for (int i = 0; i < 20000; i++) {
+    for (int i = 1; i < 20000 && rclcpp::ok(); i++) {
       next_time += period;
       auto imus = dv::data::generate::levelImuWithNoise(i * 1000ULL, 0.1f, 0.01f, i);
       auto events = dv::data::generate::uniformEventsWithinTimeRange(
@@ -467,8 +461,8 @@ void EventCameraNode::startSimulation()
       // auto diff_t = std::chrono::system_clock::now() - t;
       std::this_thread::sleep_until(next_time);
     }
+    rclcpp::shutdown();
   });
-  thread_.detach();
 }
 #endif
 
