@@ -13,6 +13,11 @@ def generate_launch_description():
                 default_value="libcaer_cmp",
                 description="Event encoding: 'libcaer_cmp' (compressed) or 'dvs' (uncompressed)",
             ),
+            DeclareLaunchArgument(
+                "camera_model",
+                default_value="dvxplorer",
+                description="Camera Model: 'dvxplorer' (dvxplorer) or 'dvxmicro' (dvxplorer-micro)",
+            ),
             Node(
                 package="dv_processing_driver",
                 executable="dv_processing_driver_node",
@@ -24,6 +29,7 @@ def generate_launch_description():
                         "every_nth_px": 4,  # 4 effectively halfs resolution
                         "low_pass_freq": 100.0,
                         "encoding": LaunchConfiguration("encoding"),
+                        "camera_model": LaunchConfiguration("camera_model"),
                     }
                 ],
             ),

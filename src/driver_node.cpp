@@ -13,11 +13,14 @@
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <variant>
 
 #include "dv-processing/core/core.hpp"
 #include "dv-processing/core/filters.hpp"
+#include "dv-processing/io/camera/camera_input_base.hpp"
+#include "dv-processing/io/camera/dvxplorer.hpp"
 #include "dv_processing_driver/compressed_encoder.hpp"
 #include "event_camera_msgs/msg/event_packet.hpp"
 
@@ -29,6 +32,17 @@
 // run `export QT_QPA_PLATFORM=xcb` before before starting the node
 
 using namespace std::chrono_literals;
+
+std::unique_ptr<dv::io::camera::CameraInputBase> makeCamera(const std::string & model)
+{
+  if (model == "dvxplorer") {
+    return std::make_unique<dv::io::camera::DVXplorer>(/* serial, logger, level */);
+  }
+  if (model == "dvxmicro") {
+    return std::make_unique<dv::io::camera::DVXplorerM>(/* serial, logger, level */);
+  }
+  throw std::invalid_argument("camera model must be 'dvxplorer' or 'dvxmicro'");
+}
 
 EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
 {
@@ -47,6 +61,10 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   encoding_ = this->declare_parameter<std::string>("encoding", "libcaer_cmp");
   if (encoding_ != "dvs" && encoding_ != "libcaer_cmp") {
     throw std::invalid_argument("encoding must be one of 'dvs' or 'libcaer_cmp'");
+  }
+  camera_model_ = this->declare_parameter<std::string>("camera_model", "dvxplorer");
+  if (camera_model_ != "dvxplorer" && camera_model_ != "dvxmicro") {
+    throw std::invalid_argument("camera model must be supported: 'dvxplorer' or 'dvxmicro'");
   }
   RCLCPP_INFO(
     get_logger(), "stored setup params (publish_period_ms=%ld, encoding=%s)",
@@ -374,7 +392,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
 void EventCameraNode::startCamera()
 {
   RCLCPP_INFO(get_logger(), "emplace camera ...");
-  camera_.emplace();
+  camera_ = makeCamera(camera_model_);
   if (!camera_) {
     RCLCPP_FATAL(get_logger(), "Camera not initialized!");
     throw std::runtime_error("Camera not initialized");
