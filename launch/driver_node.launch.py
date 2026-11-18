@@ -1,4 +1,4 @@
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -8,6 +8,7 @@ from launch import LaunchDescription
 def generate_launch_description():
     return LaunchDescription(
         [
+            SetEnvironmentVariable("QT_QPA_PLATFORM", "xcb"),
             DeclareLaunchArgument(
                 "encoding",
                 default_value="libcaer_cmp",
