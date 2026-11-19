@@ -65,8 +65,11 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   }
   camera_model_ = this->declare_parameter<std::string>("camera_model", "dvxplorer");
   if (camera_model_ != "dvxplorer" && camera_model_ != "dvxmicro") {
-    throw std::invalid_argument("camera model must be supported: 'dvxplorer' or 'dvxmicro'");
+    throw std::invalid_argument(
+      "camera model must be one of 'dvxplorer' or 'dvxmicro' but is: " + camera_model_);
   }
+  hardware_in_the_loop_ = this->declare_parameter<bool>("hardware_in_the_loop", "true");
+  live_viz_ = this->declare_parameter<bool>("live_viz", "false");
   RCLCPP_INFO(
     get_logger(), "stored setup params (publish_period_ms=%ld, encoding=%s)",
     static_cast<long>(publish_period_ms), encoding_.c_str());
@@ -112,65 +115,66 @@ EventCameraNode::EventCameraNode() : rclcpp::Node("event_camera_node")
   pubThread_ = std::make_shared<std::thread>(&EventCameraNode::publishingThread, this);
 #endif
 
-#ifdef OFFLINE_TESTING
-  const cv::Size resolution(640, 480);
-#else
-  // ini camera
-  startCamera();
-  RCLCPP_INFO(get_logger(), "initialized the camera");
+  if (hardware_in_the_loop_) {
+    // ini camera
+    startCamera();
+    RCLCPP_INFO(get_logger(), "initialized the camera");
 
-  if (!camera_) {
-    RCLCPP_FATAL(get_logger(), "Camera not initialized!");
-    throw std::runtime_error("Camera not initialized");
+    if (!camera_) {
+      RCLCPP_FATAL(get_logger(), "Camera not initialized!");
+      throw std::runtime_error("Camera not initialized");
+    }
+    resolution_ = *camera_->getEventResolution();
+  } else {
+    resolution_.height = 480;
+    resolution_.width = 640;
   }
-  const cv::Size resolution = *camera_->getEventResolution();
-#endif
 
   // ini filters (needed by both the real camera and the offline simulation)
-  lp_filter_ = std::make_shared<dv::noise::LowPassFilter<dv::EventStore>>(
-    resolution, low_pass_freq_);
-  createMask(every_nth_px_, resolution);
+  lp_filter_ =
+    std::make_shared<dv::noise::LowPassFilter<dv::EventStore>>(resolution_, low_pass_freq_);
+  createMask(every_nth_px_, resolution_);
   RCLCPP_INFO(get_logger(), "initialized the events filters");
 
-#ifdef LIVE_VISUALIZATION
-  // Initialize an accumulator with some resolution
-  accumulator_ = dv::Accumulator(resolution);
-  // show raw events
-  accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
-  accumulator_.setMinPotential(0.f);
-  accumulator_.setMaxPotential(1.f);
-  accumulator_.setEventContribution(1.5f);
+  if (live_viz_) {
+    // Initialize an accumulator with some resolution_
+    accumulator_ = dv::Accumulator(resolution_);
+    // show raw events
+    accumulator_.setDecayFunction(dv::Accumulator::Decay::STEP);
+    accumulator_.setMinPotential(0.f);
+    accumulator_.setMaxPotential(1.f);
+    accumulator_.setEventContribution(1.5f);
 
-  // fancy decay image reconstruct
-  // accumulator_.setMinPotential(0.f);
-  // accumulator_.setMaxPotential(1.f);
-  // accumulator_.setNeutralPotential(0.5f);
-  // accumulator_.setEventContribution(0.15f);
-  // accumulator_.setDecayFunction(dv::Accumulator::Decay::EXPONENTIAL);
-  // accumulator_.setDecayParam(1e+6);
-  // accumulator_.setIgnorePolarity(false);
-  // accumulator_.setSynchronousDecay(false);
+    // fancy decay image reconstruct
+    // accumulator_.setMinPotential(0.f);
+    // accumulator_.setMaxPotential(1.f);
+    // accumulator_.setNeutralPotential(0.5f);
+    // accumulator_.setEventContribution(0.15f);
+    // accumulator_.setDecayFunction(dv::Accumulator::Decay::EXPONENTIAL);
+    // accumulator_.setDecayParam(1e+6);
+    // accumulator_.setIgnorePolarity(false);
+    // accumulator_.setSynchronousDecay(false);
 
-  // slicer for vis. frames. Use raw events here: lp_filter_ is also advanced by
-  // the publishing path, so sharing it would corrupt the filter state.
-  event_slicer_.doEveryTimeInterval(66ms, [&](const dv::EventStore & events) {
-    accumulator_.accept(events);
-    dv::Frame frame = accumulator_.generateFrame();
+    // slicer for vis. frames. Use raw events here: lp_filter_ is also advanced by
+    // the publishing path, so sharing it would corrupt the filter state.
+    event_slicer_.doEveryTimeInterval(66ms, [&](const dv::EventStore & events) {
+      accumulator_.accept(events);
+      dv::Frame frame = accumulator_.generateFrame();
 
-    {
-      std::lock_guard<std::mutex> lk(frame_mutex_);
-      latest_frame_ = frame;
-    }
-  });
-#endif
+      {
+        std::lock_guard<std::mutex> lk(frame_mutex_);
+        latest_frame_ = frame;
+      }
+    });
+  }
 
-#ifdef OFFLINE_TESTING
-  startSimulation();
-  RCLCPP_INFO(get_logger(), "started offline simulation");
-#else
-  startCameraThread();
-  RCLCPP_INFO(get_logger(), "started camera thread");
-#endif
+  if (hardware_in_the_loop_) {
+    startCameraThread();
+    RCLCPP_INFO(get_logger(), "started camera thread");
+  } else {
+    startSimulation();
+    RCLCPP_INFO(get_logger(), "started offline simulation");
+  }
 }
 
 bool EventCameraNode::getLatestFrame(dv::Frame & out)
@@ -389,8 +393,7 @@ void EventCameraNode::publishImu(const dv::IMUPacket & packet)
   }
 }
 
-// real camera case
-#ifndef OFFLINE_TESTING
+// hardware in the loop methods
 void EventCameraNode::startCamera()
 {
   RCLCPP_INFO(get_logger(), "emplace camera ...");
@@ -445,7 +448,6 @@ void EventCameraNode::startCameraThread()
   });
 }
 
-#else
 // offline signal simulation for testing
 void EventCameraNode::startSimulation()
 {
@@ -470,7 +472,6 @@ void EventCameraNode::startSimulation()
     rclcpp::shutdown();
   });
 }
-#endif
 
 std::vector<uint8_t> EventCameraNode::compressBuffer(const uint8_t * data, size_t size)
 {
@@ -524,23 +525,25 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
 
   auto node = std::make_shared<EventCameraNode>();
+  bool live_viz = node->live_viz_;
 
   // rosnode in an seperate thread, so vis. is main thread
   std::thread ros_spin([node]() { rclcpp::spin(node); });
 
-#ifdef LIVE_VISUALIZATION
-  cv::namedWindow("Preview", cv::WINDOW_NORMAL);
-  while (rclcpp::ok()) {
-    dv::Frame frame;
-    if (node->getLatestFrame(frame)) {
-      cv::imshow("Preview", frame.image);
+  if (node->live_viz_) {
+    cv::namedWindow("Preview", cv::WINDOW_NORMAL);
+    RCLCPP_INFO(node->get_logger(), "live visualization started");
+    while (rclcpp::ok()) {
+      dv::Frame frame;
+      if (node->getLatestFrame(frame)) {
+        cv::imshow("Preview", frame.image);
+      }
+      // Process GUI events even when no new frame is available, otherwise the
+      // window may never be mapped/visible.
+      cv::waitKey(1);
+      std::this_thread::sleep_for(33ms);
     }
-    // Process GUI events even when no new frame is available, otherwise the
-    // window may never be mapped/visible.
-    cv::waitKey(1);
-    std::this_thread::sleep_for(33ms);
   }
-#endif
   ros_spin.join();
   rclcpp::shutdown();
   return 0;

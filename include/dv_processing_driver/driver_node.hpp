@@ -12,6 +12,7 @@
 #include <event_camera_msgs/msg/event_packet.hpp>
 #include <memory>
 #include <mutex>
+#include <opencv2/core/types.hpp>
 #include <queue>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -26,6 +27,8 @@
 class EventCameraNode : public rclcpp::Node
 {
 public:
+  bool live_viz_;
+
   EventCameraNode();
   ~EventCameraNode();
 
@@ -52,6 +55,7 @@ private:
   float low_pass_freq_;
   std::string encoding_;
   std::string camera_model_;
+  bool hardware_in_the_loop_;
 
   dv::EventStreamSlicer event_slicer_;
   dv::IMUStreamSlicer imu_slicer_;
@@ -78,6 +82,7 @@ private:
   uint64_t sensorTime_0{0};
 
   // mask filtering
+  cv::Size resolution_;
   cv::Mat mask_;
   int dimension_divisor_ = -1;
   int coordinate_divisor_ = 1;

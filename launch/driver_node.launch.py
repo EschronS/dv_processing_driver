@@ -1,5 +1,6 @@
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
 
 from launch import LaunchDescription
@@ -19,6 +20,16 @@ def generate_launch_description():
                 default_value="dvxplorer",
                 description="Camera Model: 'dvxplorer' (dvxplorer) or 'dvxmicro' (dvxplorer-micro)",
             ),
+            DeclareLaunchArgument(
+                "hardware_in_the_loop",
+                default_value="true",
+                description="Run with real camera hardware",
+            ),
+            DeclareLaunchArgument(
+                "live_viz",
+                default_value="false",
+                description="Open a native OpenCV event preview window",
+            ),
             Node(
                 package="dv_processing_driver",
                 executable="dv_processing_driver_node",
@@ -31,6 +42,12 @@ def generate_launch_description():
                         "low_pass_freq": 100.0,
                         "encoding": LaunchConfiguration("encoding"),
                         "camera_model": LaunchConfiguration("camera_model"),
+                        "hardware_in_the_loop": ParameterValue(
+                            LaunchConfiguration("hardware_in_the_loop"), value_type=bool
+                        ),
+                        "live_viz": ParameterValue(
+                            LaunchConfiguration("live_viz"), value_type=bool
+                        ),
                     }
                 ],
             ),
